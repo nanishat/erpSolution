@@ -3,6 +3,9 @@ import { getJournalEntries } from "@/modules/accounting/services/journal-entry.s
 import { JournalEntryForm } from "@/modules/accounting/components/JournalEntryForm";
 import { JournalEntryTable } from "@/modules/accounting/components/JournalEntryTable";
 
+// Ledger data must always be read fresh — never statically prerendered/cached.
+export const dynamic = "force-dynamic";
+
 export default async function AccountingPage() {
   const [entries, accounts] = await Promise.all([
     getJournalEntries(),

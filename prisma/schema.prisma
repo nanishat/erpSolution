@@ -9,10 +9,11 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
   name      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  accounts  Account[]
 }
 
 model JournalEntry {
@@ -25,8 +26,8 @@ model JournalEntry {
 
   branchId    String?
   createdById String
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([date])
   @@index([branchId])
@@ -37,25 +38,50 @@ model JournalLine {
   journalEntryId String
   journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
 
-  accountId      String
-  account        Account      @relation(fields: [accountId], references: [id])
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
 
-  debit          Decimal      @default(0) @db.Decimal(18, 2)
-  credit         Decimal      @default(0) @db.Decimal(18, 2)
-  memo           String?
+  debit  Decimal @default(0) @db.Decimal(18, 2)
+  credit Decimal @default(0) @db.Decimal(18, 2)
+  memo   String?
 
   @@index([journalEntryId])
   @@index([accountId])
 }
 
 model Account {
-  id           String        @id @default(cuid())
-  code         String        @unique
-  name         String
-  type         AccountType
-  isActive     Boolean       @default(true)
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  type    AccountType
+  subType AccountSubType?
+
+  parentId String?
+  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children Account[] @relation("AccountHierarchy")
+
+  branchId String?
+
+  isActive       Boolean @default(true)
+  isReconcilable Boolean @default(false)
+  isSystem       Boolean @default(false)
+
+  currencyCode       String    @default("BDT")
+  openingBalance     Decimal   @default(0) @db.Decimal(18, 2)
+  openingBalanceDate DateTime?
+
+  createdById Int?
+  createdBy   User? @relation(fields: [createdById], references: [id])
 
   journalLines JournalLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId, type])
+  @@index([parentId])
 }
 
 enum AccountType {
@@ -64,6 +90,23 @@ enum AccountType {
   EQUITY
   REVENUE
   EXPENSE
+}
+
+enum AccountSubType {
+  CURRENT_ASSET
+  FIXED_ASSET
+  BANK
+  CASH
+  RECEIVABLE
+  CURRENT_LIABILITY
+  LONG_TERM_LIABILITY
+  PAYABLE
+  EQUITY
+  OPERATING_REVENUE
+  OTHER_REVENUE
+  OPERATING_EXPENSE
+  COST_OF_GOODS_SOLD
+  OTHER_EXPENSE
 }
 
 enum JournalEntryStatus {

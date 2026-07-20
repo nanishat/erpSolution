@@ -1,0 +1,54 @@
+# Staging skeleton only — not wired to any real deploy target yet.
+# Usage: docker compose -f docker-compose.staging.yml --env-file .env.staging up --build
+version: "3.8"
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # One-shot job: applies pending migrations against a live DB, then exits.
+  # Targets the `builder` stage (has the Prisma CLI + schema/migrations dir),
+  # keeping the `runner`-stage app image minimal. Runs at container-start time,
+  # not during `docker build` — see Dockerfile comment on the `builder` stage.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-staging_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-staging_password}
+      POSTGRES_DB: ${POSTGRES_DB:-staging_db}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-staging_user}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_staging_data:
