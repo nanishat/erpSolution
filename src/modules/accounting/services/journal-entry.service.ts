@@ -36,6 +36,7 @@ export async function createJournalEntry(
       date: input.date,
       description: input.description,
       reference: input.reference,
+      branchId: input.branchId,
       createdById,
       lines: {
         create: input.lines.map((line) => ({

@@ -12,6 +12,7 @@ export const journalEntrySchema = z
     date: z.coerce.date(),
     description: z.string().min(1, "Description is required"),
     reference: z.string().optional(),
+    branchId: z.string().min(1, "Branch is required"),
     lines: z
       .array(journalLineSchema)
       .min(2, "A journal entry needs at least two line items"),

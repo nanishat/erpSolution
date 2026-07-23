@@ -1,15 +1,17 @@
-import { getActiveAccounts } from "@/modules/accounting/services/account.service";
+import { getActiveChartOfAccounts } from "@/modules/accounting/services/chart-of-account.service";
 import { getJournalEntries } from "@/modules/accounting/services/journal-entry.service";
 import { JournalEntryForm } from "@/modules/accounting/components/JournalEntryForm";
 import { JournalEntryTable } from "@/modules/accounting/components/JournalEntryTable";
+import { getBranches } from "@/modules/core/services/branch.service";
 
 // Ledger data must always be read fresh — never statically prerendered/cached.
 export const dynamic = "force-dynamic";
 
 export default async function AccountingPage() {
-  const [entries, accounts] = await Promise.all([
+  const [entries, accounts, branches] = await Promise.all([
     getJournalEntries(),
-    getActiveAccounts(),
+    getActiveChartOfAccounts(),
+    getBranches(),
   ]);
 
   return (
@@ -20,7 +22,7 @@ export default async function AccountingPage() {
           Record and review journal entries.
         </p>
       </div>
-      <JournalEntryForm accounts={accounts} />
+      <JournalEntryForm accounts={accounts} branches={branches} />
       <JournalEntryTable entries={entries} />
     </div>
   );

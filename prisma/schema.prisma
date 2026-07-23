@@ -9,11 +9,23 @@ datasource db {
 }
 
 model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique
-  name      String?
-  createdAt DateTime  @default(now())
-  accounts  Account[]
+  id               Int               @id @default(autoincrement())
+  email            String            @unique
+  name             String?
+  createdAt        DateTime          @default(now())
+  chartOfAccounts  ChartOfAccount[]
+}
+
+model Branch {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique
+  isHeadOffice  Boolean  @default(false)
+
+  journalEntries JournalEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model JournalEntry {
@@ -24,7 +36,8 @@ model JournalEntry {
   status      JournalEntryStatus @default(DRAFT)
   lines       JournalLine[]
 
-  branchId    String?
+  branchId    String
+  branch      Branch @relation(fields: [branchId], references: [id])
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -39,7 +52,7 @@ model JournalLine {
   journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
 
   accountId String
-  account   Account @relation(fields: [accountId], references: [id])
+  account   ChartOfAccount @relation(fields: [accountId], references: [id])
 
   debit  Decimal @default(0) @db.Decimal(18, 2)
   credit Decimal @default(0) @db.Decimal(18, 2)
@@ -49,7 +62,7 @@ model JournalLine {
   @@index([accountId])
 }
 
-model Account {
+model ChartOfAccount {
   id          String  @id @default(cuid())
   code        String  @unique
   name        String
@@ -59,10 +72,8 @@ model Account {
   subType AccountSubType?
 
   parentId String?
-  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children Account[] @relation("AccountHierarchy")
-
-  branchId String?
+  parent   ChartOfAccount?  @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
+  children ChartOfAccount[] @relation("ChartOfAccountHierarchy")
 
   isActive       Boolean @default(true)
   isReconcilable Boolean @default(false)
@@ -80,7 +91,7 @@ model Account {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([branchId, type])
+  @@index([type])
   @@index([parentId])
 }
 

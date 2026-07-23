@@ -5,23 +5,23 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const assets = await prisma.account.create({
+  const assets = await prisma.chartOfAccount.create({
     data: { code: "1000", name: "Assets", type: "ASSET", isSystem: true },
   });
-  const liabilities = await prisma.account.create({
+  const liabilities = await prisma.chartOfAccount.create({
     data: { code: "2000", name: "Liabilities", type: "LIABILITY", isSystem: true },
   });
-  await prisma.account.create({
+  await prisma.chartOfAccount.create({
     data: { code: "3000", name: "Equity", type: "EQUITY", isSystem: true },
   });
-  const revenue = await prisma.account.create({
+  const revenue = await prisma.chartOfAccount.create({
     data: { code: "4000", name: "Revenue", type: "REVENUE", isSystem: true },
   });
-  const expense = await prisma.account.create({
+  const expense = await prisma.chartOfAccount.create({
     data: { code: "5000", name: "Expense", type: "EXPENSE", isSystem: true },
   });
 
-  await prisma.account.createMany({
+  await prisma.chartOfAccount.createMany({
     data: [
       {
         code: "1010",

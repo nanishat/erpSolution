@@ -7,11 +7,12 @@ import type { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { createJournalEntryAction } from "@/modules/accounting/actions/journal-entry.actions";
-import type { AccountOption } from "@/modules/accounting/types/journal-entry.types";
+import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import {
   journalEntrySchema,
   type JournalEntryInput,
 } from "@/modules/accounting/validations/journal-entry.schema";
+import type { BranchOption } from "@/modules/core/services/branch.service";
 
 // zod's `coerce`/`default` make the form's *input* shape (pre-validation) differ
 // from its *output* shape (post-validation, sent to the server action), so the
@@ -25,7 +26,13 @@ const emptyLine: JournalEntryFormValues["lines"][number] = {
   memo: "",
 };
 
-export function JournalEntryForm({ accounts }: { accounts: AccountOption[] }) {
+export function JournalEntryForm({
+  accounts,
+  branches,
+}: {
+  accounts: ChartOfAccountOption[];
+  branches: BranchOption[];
+}) {
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -41,6 +48,7 @@ export function JournalEntryForm({ accounts }: { accounts: AccountOption[] }) {
       date: new Date(),
       description: "",
       reference: "",
+      branchId: "",
       lines: [emptyLine, emptyLine],
     },
   });
@@ -90,6 +98,30 @@ export function JournalEntryForm({ accounts }: { accounts: AccountOption[] }) {
             {...register("reference")}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium" htmlFor="branchId">
+          Branch
+        </label>
+        <select
+          id="branchId"
+          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          defaultValue=""
+          {...register("branchId")}
+        >
+          <option value="" disabled>
+            Select branch
+          </option>
+          {branches.map((branch) => (
+            <option key={branch.id} value={branch.id}>
+              {branch.name} ({branch.code})
+            </option>
+          ))}
+        </select>
+        {errors.branchId && (
+          <p className="mt-1 text-xs text-destructive">{errors.branchId.message}</p>
+        )}
       </div>
 
       <div>
