@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createJournalEntry } from "@/modules/accounting/services/journal-entry.service";
+import {
+  BranchNotFoundError,
+  createJournalEntry,
+} from "@/modules/accounting/services/journal-entry.service";
 import {
   journalEntrySchema,
   type JournalEntryInput,
@@ -31,7 +34,10 @@ export async function createJournalEntryAction(
     const entry = await createJournalEntry(parsed.data, UNASSIGNED_USER_ID);
     revalidatePath("/accounting");
     return { success: true, entryId: entry.id };
-  } catch {
+  } catch (error) {
+    if (error instanceof BranchNotFoundError) {
+      return { success: false, error: error.message };
+    }
     return { success: false, error: "Failed to create journal entry." };
   }
 }

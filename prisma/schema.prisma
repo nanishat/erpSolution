@@ -22,19 +22,23 @@ model Branch {
   code          String   @unique
   isHeadOffice  Boolean  @default(false)
 
-  journalEntries JournalEntry[]
+  journalEntries    JournalEntry[]
+  journalLines      JournalLine[]
+  documentSequences DocumentSequence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model JournalEntry {
-  id          String             @id @default(cuid())
-  date        DateTime
-  description String
-  reference   String?
-  status      JournalEntryStatus @default(DRAFT)
-  lines       JournalLine[]
+  id             String             @id @default(cuid())
+  date           DateTime
+  description    String
+  reference      String?
+  status         JournalEntryStatus @default(DRAFT)
+  voucherType    VoucherType
+  documentNumber String             @unique
+  lines          JournalLine[]
 
   branchId    String
   branch      Branch @relation(fields: [branchId], references: [id])
@@ -54,12 +58,27 @@ model JournalLine {
   accountId String
   account   ChartOfAccount @relation(fields: [accountId], references: [id])
 
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
   debit  Decimal @default(0) @db.Decimal(18, 2)
   credit Decimal @default(0) @db.Decimal(18, 2)
   memo   String?
 
   @@index([journalEntryId])
   @@index([accountId])
+  @@index([branchId])
+}
+
+model DocumentSequence {
+  id          String      @id @default(cuid())
+  voucherType VoucherType
+  branchId    String
+  branch      Branch      @relation(fields: [branchId], references: [id])
+  yearMonth   String
+  lastNumber  Int         @default(0)
+
+  @@unique([voucherType, branchId, yearMonth])
 }
 
 model ChartOfAccount {
@@ -124,4 +143,11 @@ enum JournalEntryStatus {
   DRAFT
   POSTED
   VOID
+}
+
+enum VoucherType {
+  DEBIT_VOUCHER
+  CREDIT_VOUCHER
+  JOURNAL_VOUCHER
+  CASH_VOUCHER
 }

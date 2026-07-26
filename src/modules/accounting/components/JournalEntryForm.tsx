@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useEffect, useState, useTransition } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { VoucherType } from "@prisma/client";
 import type { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,20 @@ import type { BranchOption } from "@/modules/core/services/branch.service";
 // form is typed with both via react-hook-form's TFieldValues/TTransformedValues.
 type JournalEntryFormValues = z.input<typeof journalEntrySchema>;
 
-const emptyLine: JournalEntryFormValues["lines"][number] = {
+const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {
+  DEBIT_VOUCHER: "Debit Voucher",
+  CREDIT_VOUCHER: "Credit Voucher",
+  JOURNAL_VOUCHER: "Journal Voucher",
+  CASH_VOUCHER: "Cash Voucher",
+};
+
+const emptyLine = (branchId: string): JournalEntryFormValues["lines"][number] => ({
   accountId: "",
+  branchId,
   debit: 0,
   credit: 0,
   memo: "",
-};
+});
 
 export function JournalEntryForm({
   accounts,
@@ -41,6 +50,8 @@ export function JournalEntryForm({
     handleSubmit,
     control,
     reset,
+    getValues,
+    setValue,
     formState: { errors },
   } = useForm<JournalEntryFormValues, unknown, JournalEntryInput>({
     resolver: zodResolver(journalEntrySchema),
@@ -49,11 +60,25 @@ export function JournalEntryForm({
       description: "",
       reference: "",
       branchId: "",
-      lines: [emptyLine, emptyLine],
+      voucherType: undefined,
+      lines: [emptyLine(""), emptyLine("")],
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
+  const entryBranchId = useWatch({ control, name: "branchId" });
+
+  // Newly selecting the entry's branch defaults any not-yet-assigned line
+  // branches to it, while leaving lines the user already set alone (a single
+  // voucher can allocate across branches on different lines).
+  useEffect(() => {
+    if (!entryBranchId) return;
+    getValues("lines").forEach((line, index) => {
+      if (!line.branchId) {
+        setValue(`lines.${index}.branchId`, entryBranchId);
+      }
+    });
+  }, [entryBranchId, getValues, setValue]);
 
   const onSubmit = (values: JournalEntryInput) => {
     setFormError(null);
@@ -100,28 +125,53 @@ export function JournalEntryForm({
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium" htmlFor="branchId">
-          Branch
-        </label>
-        <select
-          id="branchId"
-          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          defaultValue=""
-          {...register("branchId")}
-        >
-          <option value="" disabled>
-            Select branch
-          </option>
-          {branches.map((branch) => (
-            <option key={branch.id} value={branch.id}>
-              {branch.name} ({branch.code})
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-sm font-medium" htmlFor="branchId">
+            Branch
+          </label>
+          <select
+            id="branchId"
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            defaultValue=""
+            {...register("branchId")}
+          >
+            <option value="" disabled>
+              Select branch
             </option>
-          ))}
-        </select>
-        {errors.branchId && (
-          <p className="mt-1 text-xs text-destructive">{errors.branchId.message}</p>
-        )}
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.name} ({branch.code})
+              </option>
+            ))}
+          </select>
+          {errors.branchId && (
+            <p className="mt-1 text-xs text-destructive">{errors.branchId.message}</p>
+          )}
+        </div>
+        <div>
+          <label className="text-sm font-medium" htmlFor="voucherType">
+            Voucher Type
+          </label>
+          <select
+            id="voucherType"
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            defaultValue=""
+            {...register("voucherType")}
+          >
+            <option value="" disabled>
+              Select voucher type
+            </option>
+            {Object.values(VoucherType).map((voucherType) => (
+              <option key={voucherType} value={voucherType}>
+                {VOUCHER_TYPE_LABELS[voucherType]}
+              </option>
+            ))}
+          </select>
+          {errors.voucherType && (
+            <p className="mt-1 text-xs text-destructive">{errors.voucherType.message}</p>
+          )}
+        </div>
       </div>
 
       <div>
@@ -146,7 +196,7 @@ export function JournalEntryForm({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => append(emptyLine)}
+            onClick={() => append(emptyLine(entryBranchId ?? ""))}
           >
             Add line
           </Button>
@@ -155,7 +205,7 @@ export function JournalEntryForm({
         {fields.map((field, index) => (
           <div
             key={field.id}
-            className="grid grid-cols-[2fr_1fr_1fr_2fr_auto] items-start gap-2"
+            className="grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_auto] items-start gap-2"
           >
             <select
               className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -168,6 +218,20 @@ export function JournalEntryForm({
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.code} — {account.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              defaultValue=""
+              {...register(`lines.${index}.branchId` as const)}
+            >
+              <option value="" disabled>
+                Select branch
+              </option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name} ({branch.code})
                 </option>
               ))}
             </select>

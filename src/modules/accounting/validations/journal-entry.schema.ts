@@ -1,7 +1,9 @@
+import { VoucherType } from "@prisma/client";
 import { z } from "zod";
 
 export const journalLineSchema = z.object({
   accountId: z.string().min(1, "Account is required"),
+  branchId: z.string().min(1, "Branch is required"),
   debit: z.coerce.number().min(0, "Debit cannot be negative").default(0),
   credit: z.coerce.number().min(0, "Credit cannot be negative").default(0),
   memo: z.string().optional(),
@@ -13,6 +15,7 @@ export const journalEntrySchema = z
     description: z.string().min(1, "Description is required"),
     reference: z.string().optional(),
     branchId: z.string().min(1, "Branch is required"),
+    voucherType: z.nativeEnum(VoucherType),
     lines: z
       .array(journalLineSchema)
       .min(2, "A journal entry needs at least two line items"),

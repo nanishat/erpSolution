@@ -10,6 +10,7 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
       <table className="w-full text-sm">
         <thead className="bg-muted text-left text-muted-foreground">
           <tr>
+            <th className="px-3 py-2">Document #</th>
             <th className="px-3 py-2">Date</th>
             <th className="px-3 py-2">Description</th>
             <th className="px-3 py-2">Reference</th>
@@ -31,6 +32,7 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
 
             return (
               <tr key={entry.id} className="border-t border-border">
+                <td className="px-3 py-2 font-mono text-xs">{entry.documentNumber}</td>
                 <td className="px-3 py-2">{entry.date.toLocaleDateString()}</td>
                 <td className="px-3 py-2">{entry.description}</td>
                 <td className="px-3 py-2">{entry.reference ?? "—"}</td>
