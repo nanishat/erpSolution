@@ -23,6 +23,7 @@ export const updateChartOfAccountSchema = z.object({
   type: z.nativeEnum(AccountType).optional(),
   subType: z.nativeEnum(AccountSubType).nullable().optional(),
   parentId: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
   isReconcilable: z.boolean().optional(),
   currencyCode: z.string().optional(),
   openingBalance: z.coerce.number().optional(),

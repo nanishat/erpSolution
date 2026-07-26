@@ -174,9 +174,23 @@ export async function updateChartOfAccount(
   input: UpdateChartOfAccountInput
 ): Promise<ChartOfAccountWithChildren> {
   return db.$transaction(async (tx) => {
-    const existing = await tx.chartOfAccount.findUnique({ where: { id } });
+    const existing = await tx.chartOfAccount.findUnique({
+      where: { id },
+      include: { journalLines: { take: 1 } },
+    });
     if (!existing) {
       throw new ChartOfAccountNotFoundError(id);
+    }
+
+    if (input.isActive === false) {
+      if (existing.isSystem) {
+        throw new ChartOfAccountDeletionNotAllowedError("System accounts cannot be deactivated");
+      }
+      if (existing.journalLines.length > 0) {
+        throw new ChartOfAccountDeletionNotAllowedError(
+          "Account has journal lines and cannot be deactivated"
+        );
+      }
     }
 
     if (input.code && input.code !== existing.code) {
@@ -189,6 +203,12 @@ export async function updateChartOfAccount(
     const nextType = input.type ?? existing.type;
 
     if (input.parentId) {
+      const existingChild = await tx.chartOfAccount.findFirst({ where: { parentId: id } });
+      if (existingChild) {
+        throw new InvalidChartOfAccountHierarchyError(
+          "Cannot assign a parent to an account that already has sub-accounts (max 2 levels)"
+        );
+      }
       await assertNoCycle(tx, id, input.parentId);
       const parent = await tx.chartOfAccount.findUnique({
         where: { id: input.parentId },
@@ -216,6 +236,7 @@ export async function updateChartOfAccount(
           type: input.type,
           subType: input.subType,
           parentId: input.parentId,
+          isActive: input.isActive,
           isReconcilable: input.isReconcilable,
           currencyCode: input.currencyCode,
           openingBalance: input.openingBalance,
