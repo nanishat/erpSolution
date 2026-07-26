@@ -73,7 +73,8 @@ export class JournalEntryAlreadyReversedError extends Error {
 }
 
 const journalEntryInclude = {
-  lines: { include: { account: true } },
+  branch: { select: { id: true, name: true, code: true } },
+  lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
   reversalOfEntry: { select: { id: true, documentNumber: true } },
   reversedByEntry: { select: { id: true, documentNumber: true } },
 } satisfies Prisma.JournalEntryInclude;

@@ -48,7 +48,7 @@ export async function getActiveChartOfAccounts(): Promise<ChartOfAccountOption[]
   return db.chartOfAccount.findMany({
     where: { isActive: true },
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true },
+    select: { id: true, code: true, name: true, subType: true },
   });
 }
 

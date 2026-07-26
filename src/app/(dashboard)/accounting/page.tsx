@@ -1,20 +1,14 @@
 import Link from "next/link";
 
-import { getActiveChartOfAccounts } from "@/modules/accounting/services/chart-of-account.service";
 import { getJournalEntries } from "@/modules/accounting/services/journal-entry.service";
-import { JournalEntryForm } from "@/modules/accounting/components/JournalEntryForm";
 import { JournalEntryTable } from "@/modules/accounting/components/JournalEntryTable";
-import { getBranches } from "@/modules/core/services/branch.service";
+import { Button } from "@/components/ui/button";
 
 // Ledger data must always be read fresh — never statically prerendered/cached.
 export const dynamic = "force-dynamic";
 
 export default async function AccountingPage() {
-  const [entries, accounts, branches] = await Promise.all([
-    getJournalEntries(),
-    getActiveChartOfAccounts(),
-    getBranches(),
-  ]);
+  const entries = await getJournalEntries();
 
   return (
     <div className="space-y-6">
@@ -25,14 +19,18 @@ export default async function AccountingPage() {
             Record and review journal entries.
           </p>
         </div>
-        <Link
-          href="/accounting/chart-of-accounts"
-          className="text-sm text-primary underline-offset-4 hover:underline"
-        >
-          Chart of Accounts →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/accounting/chart-of-accounts"
+            className="text-sm text-primary underline-offset-4 hover:underline"
+          >
+            Chart of Accounts →
+          </Link>
+          <Button asChild>
+            <Link href="/accounting/journal-entries/new">New journal entry</Link>
+          </Button>
+        </div>
       </div>
-      <JournalEntryForm accounts={accounts} branches={branches} />
       <JournalEntryTable entries={entries} />
     </div>
   );

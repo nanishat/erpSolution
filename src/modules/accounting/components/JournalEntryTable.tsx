@@ -1,58 +1,17 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { useJournalEntryActions } from "@/modules/accounting/hooks/useJournalEntryActions";
 import type { JournalEntryWithLines } from "@/modules/accounting/types/journal-entry.types";
 
 export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[] }) {
-  const router = useRouter();
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const { pendingId, handlePost, handleReverse } = useJournalEntryActions();
 
   if (entries.length === 0) {
     return <p className="text-sm text-muted-foreground">No journal entries yet.</p>;
   }
-
-  const handlePost = async (entry: JournalEntryWithLines) => {
-    if (!window.confirm(`Post ${entry.documentNumber}? This cannot be edited afterward.`)) return;
-    setPendingId(entry.id);
-    try {
-      const res = await fetch(`/api/journal-entries/${entry.id}/post`, { method: "POST" });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        window.alert(json?.error ?? "Failed to post journal entry.");
-        return;
-      }
-      router.refresh();
-    } finally {
-      setPendingId(null);
-    }
-  };
-
-  const handleReverse = async (entry: JournalEntryWithLines) => {
-    const reason = window.prompt(
-      `Reverse ${entry.documentNumber}? This creates a new offsetting entry and voids this one. Optional reason:`
-    );
-    if (reason === null) return;
-    setPendingId(entry.id);
-    try {
-      const res = await fetch(`/api/journal-entries/${entry.id}/reverse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: reason || undefined }),
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        window.alert(json?.error ?? "Failed to reverse journal entry.");
-        return;
-      }
-      router.refresh();
-    } finally {
-      setPendingId(null);
-    }
-  };
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
@@ -84,7 +43,12 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
             return (
               <tr key={entry.id} className="border-t border-border">
                 <td className="px-3 py-2 font-mono text-xs">
-                  {entry.documentNumber}
+                  <Link
+                    href={`/accounting/journal-entries/${entry.id}`}
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {entry.documentNumber}
+                  </Link>
                   {entry.reversalOfEntry && (
                     <div className="mt-1 font-sans text-xs text-muted-foreground">
                       Reverses {entry.reversalOfEntry.documentNumber}
