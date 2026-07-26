@@ -11,6 +11,43 @@ export class BranchNotFoundError extends Error {
   }
 }
 
+export class JournalEntryNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Journal entry ${id} not found`);
+    this.name = "JournalEntryNotFoundError";
+  }
+}
+
+export class JournalEntryAlreadyPostedError extends Error {
+  constructor(id: string) {
+    super(`Journal entry ${id} is already posted`);
+    this.name = "JournalEntryAlreadyPostedError";
+  }
+}
+
+export class JournalEntryVoidError extends Error {
+  constructor(id: string) {
+    super(`Journal entry ${id} is void and cannot be posted`);
+    this.name = "JournalEntryVoidError";
+  }
+}
+
+export class UnbalancedJournalEntryError extends Error {
+  constructor(id: string, totalDebit: number, totalCredit: number) {
+    super(
+      `Journal entry ${id} is not balanced: debits (${totalDebit}) must equal credits (${totalCredit})`
+    );
+    this.name = "UnbalancedJournalEntryError";
+  }
+}
+
+export class InactiveAccountJournalLineError extends Error {
+  constructor(accountId: string) {
+    super(`Account ${accountId} is deactivated and cannot be used to post a journal entry`);
+    this.name = "InactiveAccountJournalLineError";
+  }
+}
+
 const journalEntryInclude = {
   lines: { include: { account: true } },
 } satisfies Prisma.JournalEntryInclude;
@@ -77,4 +114,59 @@ export async function createJournalEntry(
       include: journalEntryInclude,
     });
   });
+}
+
+async function postJournalEntryWithClient(
+  tx: Prisma.TransactionClient,
+  entryId: string
+): Promise<JournalEntryWithLines> {
+  const entry = await tx.journalEntry.findUnique({
+    where: { id: entryId },
+    include: journalEntryInclude,
+  });
+
+  if (!entry) {
+    throw new JournalEntryNotFoundError(entryId);
+  }
+  if (entry.status === "POSTED") {
+    throw new JournalEntryAlreadyPostedError(entryId);
+  }
+  if (entry.status === "VOID") {
+    throw new JournalEntryVoidError(entryId);
+  }
+
+  // Defense in depth: re-check the balance against current DB state rather than
+  // trusting create-time validation, in case the entry was edited since creation.
+  const totalDebit = entry.lines.reduce((sum, line) => sum + Number(line.debit), 0);
+  const totalCredit = entry.lines.reduce((sum, line) => sum + Number(line.credit), 0);
+  if (Math.round((totalDebit - totalCredit) * 100) !== 0) {
+    throw new UnbalancedJournalEntryError(entryId, totalDebit, totalCredit);
+  }
+
+  const inactiveLine = entry.lines.find((line) => !line.account.isActive);
+  if (inactiveLine) {
+    throw new InactiveAccountJournalLineError(inactiveLine.accountId);
+  }
+
+  return tx.journalEntry.update({
+    where: { id: entryId },
+    data: { status: "POSTED" },
+    include: journalEntryInclude,
+  });
+}
+
+/**
+ * Transitions a DRAFT journal entry to POSTED, re-validating balance and
+ * account status against current DB state. Pass `tx` to run as part of an
+ * already-open transaction (e.g. a caller posting multiple entries atomically);
+ * otherwise a new transaction is opened for this call alone.
+ */
+export async function postJournalEntry(
+  entryId: string,
+  tx?: Prisma.TransactionClient
+): Promise<JournalEntryWithLines> {
+  if (tx) {
+    return postJournalEntryWithClient(tx, entryId);
+  }
+  return db.$transaction((transaction) => postJournalEntryWithClient(transaction, entryId));
 }
