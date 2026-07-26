@@ -4,7 +4,10 @@ import {
   BranchNotFoundError,
   InactiveAccountJournalLineError,
   JournalEntryAlreadyPostedError,
+  JournalEntryAlreadyReversedError,
+  JournalEntryImmutableError,
   JournalEntryNotFoundError,
+  JournalEntryNotPostedError,
   JournalEntryVoidError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
@@ -15,7 +18,10 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
   }
   if (
     error instanceof JournalEntryAlreadyPostedError ||
-    error instanceof JournalEntryVoidError
+    error instanceof JournalEntryVoidError ||
+    error instanceof JournalEntryImmutableError ||
+    error instanceof JournalEntryNotPostedError ||
+    error instanceof JournalEntryAlreadyReversedError
   ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }

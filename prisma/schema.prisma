@@ -46,6 +46,13 @@ model JournalEntry {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Self-relation linking a reversal entry back to the POSTED entry it corrects.
+  // reversalOfEntryId is @unique so an entry can be reversed at most once —
+  // the DB itself rules out double-reversal, not just the service-layer check.
+  reversalOfEntryId String?       @unique
+  reversalOfEntry   JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id])
+  reversedByEntry   JournalEntry? @relation("JournalEntryReversal")
+
   @@index([date])
   @@index([branchId])
 }

@@ -2,7 +2,10 @@ import { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { generateDocumentNumber } from "@/modules/accounting/services/document-sequence.service";
-import type { JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
+import type {
+  JournalEntryInput,
+  UpdateJournalEntryInput,
+} from "@/modules/accounting/validations/journal-entry.schema";
 
 export class BranchNotFoundError extends Error {
   constructor(id: string) {
@@ -48,8 +51,31 @@ export class InactiveAccountJournalLineError extends Error {
   }
 }
 
+export class JournalEntryImmutableError extends Error {
+  constructor(id: string, status: string) {
+    super(`Journal entry ${id} is ${status} and cannot be modified`);
+    this.name = "JournalEntryImmutableError";
+  }
+}
+
+export class JournalEntryNotPostedError extends Error {
+  constructor(id: string) {
+    super(`Journal entry ${id} is not posted and has nothing to reverse`);
+    this.name = "JournalEntryNotPostedError";
+  }
+}
+
+export class JournalEntryAlreadyReversedError extends Error {
+  constructor(id: string) {
+    super(`Journal entry ${id} has already been reversed`);
+    this.name = "JournalEntryAlreadyReversedError";
+  }
+}
+
 const journalEntryInclude = {
   lines: { include: { account: true } },
+  reversalOfEntry: { select: { id: true, documentNumber: true } },
+  reversedByEntry: { select: { id: true, documentNumber: true } },
 } satisfies Prisma.JournalEntryInclude;
 
 export type JournalEntryWithLines = Prisma.JournalEntryGetPayload<{
@@ -114,6 +140,148 @@ export async function createJournalEntry(
       include: journalEntryInclude,
     });
   });
+}
+
+/**
+ * Updates a DRAFT journal entry's date/description/reference/lines wholesale
+ * (lines are replaced, not diffed). voucherType, branchId, and documentNumber
+ * are intentionally not editable — the document number is stamped from the
+ * voucher type/branch/month at creation and must stay a stable reference.
+ * Rejects with JournalEntryImmutableError if the entry is POSTED or VOID.
+ */
+export async function updateJournalEntry(
+  entryId: string,
+  input: UpdateJournalEntryInput
+): Promise<JournalEntryWithLines> {
+  return db.$transaction(async (tx) => {
+    const existing = await tx.journalEntry.findUnique({ where: { id: entryId } });
+    if (!existing) {
+      throw new JournalEntryNotFoundError(entryId);
+    }
+    if (existing.status !== "DRAFT") {
+      throw new JournalEntryImmutableError(entryId, existing.status);
+    }
+
+    await tx.journalLine.deleteMany({ where: { journalEntryId: entryId } });
+
+    return tx.journalEntry.update({
+      where: { id: entryId },
+      data: {
+        date: input.date,
+        description: input.description,
+        reference: input.reference,
+        lines: {
+          create: input.lines.map((line) => ({
+            accountId: line.accountId,
+            branchId: line.branchId,
+            debit: line.debit,
+            credit: line.credit,
+            memo: line.memo,
+          })),
+        },
+      },
+      include: journalEntryInclude,
+    });
+  });
+}
+
+async function reverseJournalEntryWithClient(
+  tx: Prisma.TransactionClient,
+  entryId: string,
+  reason?: string
+): Promise<{ original: JournalEntryWithLines; reversal: JournalEntryWithLines }> {
+  const original = await tx.journalEntry.findUnique({
+    where: { id: entryId },
+    include: journalEntryInclude,
+  });
+
+  if (!original) {
+    throw new JournalEntryNotFoundError(entryId);
+  }
+  if (original.status === "DRAFT") {
+    throw new JournalEntryNotPostedError(entryId);
+  }
+  // status === "VOID" is only ever reached via a prior reversal (see below),
+  // and reversedByEntry is the same fact via the unique self-relation — check
+  // both since the relation is the more direct signal to detect double-reversal.
+  if (original.status === "VOID" || original.reversedByEntry) {
+    throw new JournalEntryAlreadyReversedError(entryId);
+  }
+
+  const branch = await tx.branch.findUnique({
+    where: { id: original.branchId },
+    select: { code: true },
+  });
+  if (!branch) {
+    throw new BranchNotFoundError(original.branchId);
+  }
+
+  const reversalDate = new Date();
+  const documentNumber = await generateDocumentNumber(tx, {
+    voucherType: original.voucherType,
+    branchId: original.branchId,
+    branchCode: branch.code,
+    date: reversalDate,
+  });
+
+  // Created straight to POSTED rather than routed through postJournalEntry:
+  // swapping debit/credit on an already-balanced entry is balanced by
+  // construction, and re-running the active-account check here would wrongly
+  // block reversing an entry whose account was deactivated *after* the
+  // original posting — undoing history shouldn't be gated on that.
+  const reversal = await tx.journalEntry.create({
+    data: {
+      date: reversalDate,
+      description: reason
+        ? `Reversal of ${original.documentNumber}: ${reason}`
+        : `Reversal of ${original.documentNumber}`,
+      reference: original.documentNumber,
+      branchId: original.branchId,
+      voucherType: original.voucherType,
+      documentNumber,
+      status: "POSTED",
+      createdById: original.createdById,
+      reversalOfEntryId: original.id,
+      lines: {
+        create: original.lines.map((line) => ({
+          accountId: line.accountId,
+          branchId: line.branchId,
+          debit: line.credit,
+          credit: line.debit,
+          memo: line.memo,
+        })),
+      },
+    },
+    include: journalEntryInclude,
+  });
+
+  const updatedOriginal = await tx.journalEntry.update({
+    where: { id: entryId },
+    data: { status: "VOID" },
+    include: journalEntryInclude,
+  });
+
+  return { original: updatedOriginal, reversal };
+}
+
+/**
+ * Reverses a POSTED journal entry by creating a new, separate POSTED entry
+ * with debit/credit swapped on every line (net effect zero), linked back via
+ * reversalOfEntryId, and flips the original to VOID — VOID is only ever
+ * reached through this path, there is no direct "void" action. Pass `tx` to
+ * run as part of an already-open transaction; otherwise a new one is opened.
+ */
+export async function reverseJournalEntry(
+  entryId: string,
+  reason?: string,
+  tx?: Prisma.TransactionClient
+): Promise<{ original: JournalEntryWithLines; reversal: JournalEntryWithLines }> {
+  if (tx) {
+    return reverseJournalEntryWithClient(tx, entryId, reason);
+  }
+  return db.$transaction((transaction) =>
+    reverseJournalEntryWithClient(transaction, entryId, reason)
+  );
 }
 
 async function postJournalEntryWithClient(
