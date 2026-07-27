@@ -87,7 +87,7 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
                       </Button>
                     </>
                   )}
-                  {entry.status === "POSTED" && (
+                  {entry.status === "POSTED" && !entry.reversalOfEntryId && (
                     <Button
                       type="button"
                       variant="ghost"

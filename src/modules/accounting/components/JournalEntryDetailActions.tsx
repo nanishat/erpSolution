@@ -32,7 +32,7 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryWithLi
           </Button>
         </>
       )}
-      {entry.status === "POSTED" && (
+      {entry.status === "POSTED" && !entry.reversalOfEntryId && (
         <Button
           type="button"
           variant="outline"

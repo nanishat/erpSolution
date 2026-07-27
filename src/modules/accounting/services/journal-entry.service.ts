@@ -72,6 +72,13 @@ export class JournalEntryAlreadyReversedError extends Error {
   }
 }
 
+export class CannotReverseAReversalError extends Error {
+  constructor(id: string) {
+    super(`Journal entry ${id} is itself a reversal and cannot be reversed`);
+    this.name = "CannotReverseAReversalError";
+  }
+}
+
 const journalEntryInclude = {
   branch: { select: { id: true, name: true, code: true } },
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
@@ -199,6 +206,9 @@ async function reverseJournalEntryWithClient(
   if (!original) {
     throw new JournalEntryNotFoundError(entryId);
   }
+  if (original.reversalOfEntryId) {
+    throw new CannotReverseAReversalError(entryId);
+  }
   if (original.status === "DRAFT") {
     throw new JournalEntryNotPostedError(entryId);
   }
@@ -269,8 +279,11 @@ async function reverseJournalEntryWithClient(
  * Reverses a POSTED journal entry by creating a new, separate POSTED entry
  * with debit/credit swapped on every line (net effect zero), linked back via
  * reversalOfEntryId, and flips the original to VOID — VOID is only ever
- * reached through this path, there is no direct "void" action. Pass `tx` to
- * run as part of an already-open transaction; otherwise a new one is opened.
+ * reached through this path, there is no direct "void" action. Only
+ * original entries can be reversed — an entry that is itself a reversal
+ * (reversalOfEntryId set) is rejected, so reversal chains can't grow past
+ * one level. Pass `tx` to run as part of an already-open transaction;
+ * otherwise a new one is opened.
  */
 export async function reverseJournalEntry(
   entryId: string,

@@ -45,11 +45,28 @@ Suspense Account), posts every one of them via `POST
   "doesn't error") — verified by comparing filtered totals against a known
   baseline and against a deliberately-non-matching filter value
 
-Reads branches directly via Prisma (there's no `/api/branches` route yet —
-see the Phase 1 review) and accounts via `GET /api/accounts`.
+Reads branches directly via Prisma (predates the `/api/branches` route added
+in the follow-up fixes pass below) and accounts via `GET /api/accounts`.
 
 **This script does not clean up after itself** — the entries it creates
 stay in the dev DB (POSTED, with one VOID + reversal pair) unless you delete
 them yourself. It's safe to re-run; each run just adds another batch (postings
 are idempotent-safe since each run creates new documents rather than mutating
 existing ones).
+
+### `phase1-followup-fixes-test.ts`
+
+Covers the three fixes made after the Phase 1 review:
+
+- `GET /api/branches` returns the same branches as a direct DB read
+- `/` (site root) responds with a redirect to `/accounting`
+- Reversing an **original** entry still works (regression check against the
+  new restriction)
+- Reversing a **reversal** entry is rejected with `409` and a
+  `CannotReverseAReversalError` message, the reversal's status is left
+  untouched by the rejected attempt, and neither the reversal's nor the
+  (now-VOID) original's detail page renders a "Reverse" button
+
+Reads branches/accounts directly via Prisma for setting up the test fixture
+(creating the entry to reverse); everything else goes through the real API.
+Same no-cleanup convention as `phase1-ledger-manual-test.ts`.

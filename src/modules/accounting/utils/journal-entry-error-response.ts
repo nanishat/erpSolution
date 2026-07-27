@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   BranchNotFoundError,
+  CannotReverseAReversalError,
   InactiveAccountJournalLineError,
   JournalEntryAlreadyPostedError,
   JournalEntryAlreadyReversedError,
@@ -21,7 +22,8 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
     error instanceof JournalEntryVoidError ||
     error instanceof JournalEntryImmutableError ||
     error instanceof JournalEntryNotPostedError ||
-    error instanceof JournalEntryAlreadyReversedError
+    error instanceof JournalEntryAlreadyReversedError ||
+    error instanceof CannotReverseAReversalError
   ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }
