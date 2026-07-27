@@ -26,6 +26,12 @@ export default async function AccountingPage() {
           >
             Chart of Accounts →
           </Link>
+          <Link
+            href="/accounting/reports/trial-balance"
+            className="text-sm text-primary underline-offset-4 hover:underline"
+          >
+            Trial Balance →
+          </Link>
           <Button asChild>
             <Link href="/accounting/journal-entries/new">New journal entry</Link>
           </Button>
