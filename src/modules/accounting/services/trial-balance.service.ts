@@ -56,7 +56,14 @@ export async function getTrialBalance(
       where: {
         branchId: query.branchId,
         journalEntry: {
-          status: "POSTED",
+          // VOID is only ever reached by reversing a POSTED entry, which
+          // creates a new POSTED entry with every line's debit/credit
+          // swapped (see reverseJournalEntry). That pair only cancels out
+          // to a net-zero effect if BOTH sides are summed here — excluding
+          // VOID would count the reversal's swapped lines with nothing to
+          // offset them, leaving a phantom balance equal to double the
+          // reversed amount. DRAFT is excluded because it never took effect.
+          status: { not: "DRAFT" },
           date: dateFilter,
         },
       },
