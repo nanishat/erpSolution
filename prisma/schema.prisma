@@ -9,22 +9,24 @@ datasource db {
 }
 
 model User {
-  id               Int               @id @default(autoincrement())
-  email            String            @unique
-  name             String?
-  createdAt        DateTime          @default(now())
-  chartOfAccounts  ChartOfAccount[]
+  id              Int              @id @default(autoincrement())
+  email           String           @unique
+  name            String?
+  createdAt       DateTime         @default(now())
+  chartOfAccounts ChartOfAccount[]
+  partners        Partner[]
 }
 
 model Branch {
-  id            String   @id @default(cuid())
-  name          String
-  code          String   @unique
-  isHeadOffice  Boolean  @default(false)
+  id           String  @id @default(cuid())
+  name         String
+  code         String  @unique
+  isHeadOffice Boolean @default(false)
 
   journalEntries    JournalEntry[]
   journalLines      JournalLine[]
   documentSequences DocumentSequence[]
+  localPartners     Partner[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -41,7 +43,7 @@ model JournalEntry {
   lines          JournalLine[]
 
   branchId    String
-  branch      Branch @relation(fields: [branchId], references: [id])
+  branch      Branch   @relation(fields: [branchId], references: [id])
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -121,6 +123,54 @@ model ChartOfAccount {
   @@index([parentId])
 }
 
+model Partner {
+  id   String      @id @default(cuid())
+  type PartnerType // strict discriminator — enforced at the DB level
+
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+
+  tin String? // Tax Identification Number
+  bin String? // Business Identification Number (VAT reg)
+
+  bankName          String?
+  bankAccountNumber String?
+  bankBranch        String?
+  routingNumber     String?
+
+  creditTermsDays Int? // payment terms, e.g. net 30
+
+  // Case-by-case per vendor, per business requirement — not a global rule
+  vatInclusiveInPrice Boolean? // true = vendor's quoted price already includes VAT
+
+  // TDS exemption — respected per-partner when tax is calculated on
+  // transactions involving this partner
+  tdsExempt              Boolean   @default(false)
+  tdsExemptionCertNumber String?
+  tdsExemptionExpiryDate DateTime?
+
+  // Optional: local vendor tied to a specific branch, per requirement —
+  // nullable means company-wide (the default/common case)
+  localBranchId String?
+  localBranch   Branch? @relation(fields: [localBranchId], references: [id])
+
+  isActive Boolean @default(true)
+
+  createdById Int?
+  createdBy   User? @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Invoice/payment relations attach here in Phase 3/4
+
+  @@index([type])
+  @@index([tin])
+}
+
 enum AccountType {
   ASSET
   LIABILITY
@@ -157,4 +207,9 @@ enum VoucherType {
   CREDIT_VOUCHER
   JOURNAL_VOUCHER
   CASH_VOUCHER
+}
+
+enum PartnerType {
+  CUSTOMER
+  VENDOR
 }
