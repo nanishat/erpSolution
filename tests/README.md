@@ -94,3 +94,22 @@ real API. Same no-cleanup convention as the Phase 1 scripts — partner rows
 created by this script use a `TEST ... <timestamp>` name/TIN/BIN so re-runs
 don't collide (no uniqueness constraint exists on those fields, so nothing
 enforces this — it's just a naming convention for readability).
+
+### `phase2-partner-ui-manual-test.ts`
+
+Covers the Partner list/create/edit pages built on top of the CRUD API above
+(`/partners`, `/partners/new`, `/partners/[id]/edit`). There's no headless
+browser/JSDOM runner set up, so — same as the "Reverse button hidden" check in
+`phase1-followup-fixes-test.ts` — this fetches the server-rendered page HTML
+directly and asserts on markup rather than driving a real browser:
+
+- `/partners` responds `200` and renders the heading and a "New partner" link
+- `/partners/new` renders inputs for every required field, and the `type`
+  select is not disabled
+- Creating a partner via `POST /api/partners` (the same endpoint the form's
+  submit handler calls) makes it show up on the next render of `/partners`
+- `/partners/[id]/edit` renders the partner's current name and its `type`
+  select is disabled (type is immutable after creation)
+
+Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
+scripts.
