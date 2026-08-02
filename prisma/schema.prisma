@@ -133,8 +133,8 @@ model Partner {
   email         String?
   address       String?
 
-  tin String? // Tax Identification Number
-  bin String? // Business Identification Number (VAT reg)
+  tin String // Tax Identification Number
+  bin String // Business Identification Number (VAT reg)
 
   bankName          String?
   bankAccountNumber String?

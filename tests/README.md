@@ -70,3 +70,27 @@ Covers the three fixes made after the Phase 1 review:
 Reads branches/accounts directly via Prisma for setting up the test fixture
 (creating the entry to reverse); everything else goes through the real API.
 Same no-cleanup convention as `phase1-ledger-manual-test.ts`.
+
+### `phase2-partner-manual-test.ts`
+
+Covers the Partner CRUD service/API layer added for Phase 2 (Partners & Tax
+Engine):
+
+- Creating a `CUSTOMER` and a `VENDOR` both succeed, and `type` round-trips
+  correctly
+- Creating a partner without `tin` or `bin` is rejected with `400` (both are
+  required at the DB level, not just the Zod layer)
+- Changing `type` via `PATCH` is rejected with `409` and leaves the existing
+  row untouched; a same-value `type` in the PATCH body is not treated as a
+  change
+- Deactivating a partner (`DELETE`, soft delete via `isActive`) excludes it
+  from the default `GET /api/partners` list but it's still fetchable by id,
+  and reappears when `?isActive=false` is passed explicitly
+- `localBranchId` validation: a real branch id is accepted, a nonexistent one
+  is rejected with `400`
+
+Reads `GET /api/branches` for fixture data; everything else goes through the
+real API. Same no-cleanup convention as the Phase 1 scripts — partner rows
+created by this script use a `TEST ... <timestamp>` name/TIN/BIN so re-runs
+don't collide (no uniqueness constraint exists on those fields, so nothing
+enforces this — it's just a naming convention for readability).
