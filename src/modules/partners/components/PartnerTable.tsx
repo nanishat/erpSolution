@@ -167,7 +167,7 @@ export function PartnerTable({
                     <td className="px-3 py-2">{partner.isActive ? "Active" : "Inactive"}</td>
                     <td className="px-3 py-2 text-right">
                       <Link
-                        href={`/partners/${partner.id}/edit`}
+                        href={`/accounting/partners/${partner.id}/edit`}
                         className="text-sm text-primary underline-offset-4 hover:underline"
                       >
                         Edit

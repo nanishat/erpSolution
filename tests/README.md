@@ -98,18 +98,42 @@ enforces this — it's just a naming convention for readability).
 ### `phase2-partner-ui-manual-test.ts`
 
 Covers the Partner list/create/edit pages built on top of the CRUD API above
-(`/partners`, `/partners/new`, `/partners/[id]/edit`). There's no headless
-browser/JSDOM runner set up, so — same as the "Reverse button hidden" check in
+(`/accounting/partners`, `/accounting/partners/new`,
+`/accounting/partners/[id]/edit` — nested under `/accounting` since Partners
+is part of the accounting domain; see the nav-restructure note in
+`phase2-nav-restructure-manual-test.ts`). There's no headless browser/JSDOM
+runner set up, so — same as the "Reverse button hidden" check in
 `phase1-followup-fixes-test.ts` — this fetches the server-rendered page HTML
 directly and asserts on markup rather than driving a real browser:
 
-- `/partners` responds `200` and renders the heading and a "New partner" link
-- `/partners/new` renders inputs for every required field, and the `type`
-  select is not disabled
+- `/accounting/partners` responds `200` and renders the heading and a "New
+  partner" link
+- `/accounting/partners/new` renders inputs for every required field, and the
+  `type` select is not disabled
 - Creating a partner via `POST /api/partners` (the same endpoint the form's
-  submit handler calls) makes it show up on the next render of `/partners`
-- `/partners/[id]/edit` renders the partner's current name and its `type`
-  select is disabled (type is immutable after creation)
+  submit handler calls) makes it show up on the next render of
+  `/accounting/partners`
+- `/accounting/partners/[id]/edit` renders the partner's current name and its
+  `type` select is disabled (type is immutable after creation)
 
 Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
 scripts.
+
+### `phase2-nav-restructure-manual-test.ts`
+
+Covers the sidebar restructure that grouped accounting-domain pages (Journal
+Entries, Chart of Accounts, Trial Balance, Partners) under one collapsible
+"Accounting" section in `DashboardShell.tsx`, instead of Partners sitting as a
+flat top-level item next to Accounting/HR/Inventory. Partners' page routes
+moved from `/partners` to `/accounting/partners` as part of this (the API
+routes are untouched — still `/api/partners`).
+
+- Every current nav link resolves with `200`: `/accounting`,
+  `/accounting/chart-of-accounts`, `/accounting/reports/trial-balance`,
+  `/accounting/partners`, `/hr`, `/inventory`
+- The old top-level `/partners` and `/partners/new` routes now 404
+- The sidebar (checked via the server-rendered `/accounting` page) has a
+  nested link to `/accounting/partners`, no bare `href="/partners"` link, and
+  HR/Inventory remain top-level
+
+No fixture data created, nothing to clean up — pure routing/markup checks.

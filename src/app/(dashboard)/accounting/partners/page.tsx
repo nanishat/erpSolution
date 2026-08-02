@@ -32,7 +32,7 @@ export default async function PartnersPage() {
           </p>
         </div>
         <Button asChild>
-          <Link href="/partners/new">New partner</Link>
+          <Link href="/accounting/partners/new">New partner</Link>
         </Button>
       </div>
 

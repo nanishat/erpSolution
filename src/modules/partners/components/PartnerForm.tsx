@@ -160,7 +160,7 @@ export function PartnerForm({
         return;
       }
 
-      router.push("/partners");
+      router.push("/accounting/partners");
       router.refresh();
     } catch {
       setFormError("Failed to save partner.");
@@ -454,7 +454,7 @@ export function PartnerForm({
         <Button type="submit" disabled={isPending}>
           {isPending ? "Saving..." : mode === "create" ? "Create partner" : "Save changes"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/partners")}>
+        <Button type="button" variant="outline" onClick={() => router.push("/accounting/partners")}>
           Cancel
         </Button>
       </div>

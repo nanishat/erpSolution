@@ -1,5 +1,7 @@
 // Phase 2 (Partners & Tax Engine) manual test — Partner UI (list + create/edit
 // forms) added on top of the CRUD API covered by phase2-partner-manual-test.ts.
+// Pages live under /accounting/partners (nested, not top-level — see the nav
+// restructure that grouped all accounting-domain pages under /accounting).
 //
 // There's no headless-browser/JSDOM runner wired up (see tests/README.md), so
 // this exercises the App Router pages the same way phase1-followup-fixes-test.ts
@@ -65,8 +67,8 @@ async function main() {
 
   // --- 1. List page renders ---
   console.log("--- List page renders ---");
-  const { res: listRes, html: listHtmlBefore } = await page("/partners");
-  check("GET /partners succeeds", listRes.ok, `status=${listRes.status}`);
+  const { res: listRes, html: listHtmlBefore } = await page("/accounting/partners");
+  check("GET /accounting/partners succeeds", listRes.ok, `status=${listRes.status}`);
   check(
     "List page has the Partners heading",
     listHtmlBefore.includes(">Partners<"),
@@ -80,8 +82,8 @@ async function main() {
 
   // --- 2. New partner form renders with expected fields, type not locked ---
   console.log("\n--- New partner form renders ---");
-  const { res: newRes, html: newHtml } = await page("/partners/new");
-  check("GET /partners/new succeeds", newRes.ok, `status=${newRes.status}`);
+  const { res: newRes, html: newHtml } = await page("/accounting/partners/new");
+  check("GET /accounting/partners/new succeeds", newRes.ok, `status=${newRes.status}`);
   for (const field of ["type", "name", "tin", "bin", "localBranchId"]) {
     check(
       `Create form has a "${field}" field`,
@@ -111,7 +113,7 @@ async function main() {
   check("Create via the form's endpoint succeeds", createRes.status === 201, `status=${createRes.status}`);
   const created = createJson.data as { id: string; name: string };
 
-  const { html: listHtmlAfter } = await page("/partners");
+  const { html: listHtmlAfter } = await page("/accounting/partners");
   check(
     "Newly created partner's name appears on the list page",
     listHtmlAfter.includes(partnerName),
@@ -120,8 +122,8 @@ async function main() {
 
   // --- 4. Edit form: type field is locked, existing values populate the form ---
   console.log("\n--- Edit form locks the type field ---");
-  const { res: editRes, html: editHtml } = await page(`/partners/${created.id}/edit`);
-  check("GET /partners/[id]/edit succeeds", editRes.ok, `status=${editRes.status}`);
+  const { res: editRes, html: editHtml } = await page(`/accounting/partners/${created.id}/edit`);
+  check("GET /accounting/partners/[id]/edit succeeds", editRes.ok, `status=${editRes.status}`);
   check(
     "Edit page's subtitle shows the partner's current name",
     editHtml.includes(partnerName),
