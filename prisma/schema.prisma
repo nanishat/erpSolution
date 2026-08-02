@@ -171,6 +171,40 @@ model Partner {
   @@index([tin])
 }
 
+// Reference table of named VAT/TDS/VDS rates per type/category — rate
+// definitions only. Applying a rate to a transaction (including respecting
+// Partner.tdsExempt or Partner.vatInclusiveInPrice) is calculation-engine
+// work, not modeled here.
+model TaxRate {
+  id       String  @id @default(cuid())
+  type     TaxType
+  category String // e.g. "General" for VAT, "Rent"/"Contractor"/"Professional Fees"
+  // for TDS — free text for now since the exact category list isn't final;
+  // revisit as an enum once the real category list is confirmed.
+  name String // display label, e.g. "Standard VAT 15%"
+
+  // VAT is capped at 15% and must support fractional values (7.50, 2.25) —
+  // enforced via Zod at the input boundary (not a DB check constraint) so the
+  // ceiling can move without a migration.
+  ratePercent Decimal @db.Decimal(5, 2)
+
+  // How ratePercent applies to a given amount. Defaults to EXCLUSIVE (the
+  // common case for TDS/VDS deductions); VAT inclusivity is more often
+  // partner-specific (see Partner.vatInclusiveInPrice) — this is just the
+  // rate-level fallback.
+  computationType TaxComputationType @default(EXCLUSIVE)
+
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime? // null = currently in effect, no end date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, category])
+  @@index([isActive])
+}
+
 enum AccountType {
   ASSET
   LIABILITY
@@ -212,4 +246,15 @@ enum VoucherType {
 enum PartnerType {
   CUSTOMER
   VENDOR
+}
+
+enum TaxType {
+  VAT
+  TDS
+  VDS
+}
+
+enum TaxComputationType {
+  INCLUSIVE // rate is already baked into the given amount
+  EXCLUSIVE // rate should be added on top of the given amount
 }
