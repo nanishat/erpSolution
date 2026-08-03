@@ -15,6 +15,7 @@ model User {
   createdAt       DateTime         @default(now())
   chartOfAccounts ChartOfAccount[]
   partners        Partner[]
+  taxApplications TaxApplication[]
 }
 
 model Branch {
@@ -54,6 +55,8 @@ model JournalEntry {
   reversalOfEntryId String?       @unique
   reversalOfEntry   JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id])
   reversedByEntry   JournalEntry? @relation("JournalEntryReversal")
+
+  taxApplications TaxApplication[]
 
   @@index([date])
   @@index([branchId])
@@ -165,28 +168,41 @@ model Partner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  taxApplications TaxApplication[]
+
   // Invoice/payment relations attach here in Phase 3/4
 
   @@index([type])
   @@index([tin])
 }
 
-// Reference table of named VAT/TDS/VDS rates per type/category — rate
-// definitions only. Applying a rate to a transaction (including respecting
-// Partner.tdsExempt or Partner.vatInclusiveInPrice) is calculation-engine
-// work, not modeled here.
+// Admin-maintained reference list of VAT rates (e.g. Standard 15%, Exempt
+// 0%) that users pick from per transaction. Despite `type` still being the
+// full TaxType enum, only VAT rows are realistically created/used here going
+// forward: per the clarified requirements, TDS and VDS have NO admin-managed
+// rate list — they're fully manual percent entry on TaxApplication instead
+// (see below). `type` is kept as TaxType (not narrowed to a VAT-only enum)
+// for schema flexibility, but a future reader should not expect TDS/VDS rows
+// in this table to be used by the calculation flow.
 model TaxRate {
   id       String  @id @default(cuid())
   type     TaxType
-  category String // e.g. "General" for VAT, "Rent"/"Contractor"/"Professional Fees"
-  // for TDS — free text for now since the exact category list isn't final;
-  // revisit as an enum once the real category list is confirmed.
-  name String // display label, e.g. "Standard VAT 15%"
+  category String // Now that Truncated VAT is confirmed out of scope, this is
+  // effectively just "Standard" / "Exempt" for VAT. Left as free text per the
+  // earlier decision rather than an enum — tell me if you want it narrowed
+  // further now that the category list is this short.
+  name     String // display label, e.g. "Standard VAT 15%"
 
   // VAT is capped at 15% and must support fractional values (7.50, 2.25) —
   // enforced via Zod at the input boundary (not a DB check constraint) so the
   // ceiling can move without a migration.
   ratePercent Decimal @db.Decimal(5, 2)
+
+  // Input (purchases) vs Output (sales) VAT — separate rate lists per the
+  // clarified requirements. Required (not nullable) here since every rate
+  // list entry needs a list to belong to; TaxApplication.direction is
+  // nullable instead, since it's only meaningful for VAT rows there.
+  direction TaxDirection
 
   // How ratePercent applies to a given amount. Defaults to EXCLUSIVE (the
   // common case for TDS/VDS deductions); VAT inclusivity is more often
@@ -201,8 +217,61 @@ model TaxRate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Rows referencing this rate for traceability only — the applied
+  // ratePercent is denormalized onto TaxApplication itself, so edits here
+  // never retroactively change historical applications.
+  taxApplications TaxApplication[]
+
   @@index([type, category])
   @@index([isActive])
+}
+
+// Records the actual tax applied to a transaction. ratePercent is captured
+// (denormalized) at entry time rather than looked up live from TaxRate, so
+// historical accuracy holds even after the TaxRate list changes later.
+// Schema only for now — no calculation logic or approval workflow yet.
+model TaxApplication {
+  id String @id @default(cuid())
+
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
+
+  partnerId String?
+  partner   Partner? @relation(fields: [partnerId], references: [id])
+
+  taxType   TaxType // VAT, TDS, or VDS
+  direction TaxDirection? // relevant for VAT only (input/output); null for TDS/VDS
+
+  // The rate actually used, captured at entry time — this is the source of
+  // truth for historical accuracy, NOT a live lookup. For VAT this is copied
+  // from the picked TaxRate; for TDS/VDS this is the manually-typed percent
+  // (0-15, fractional allowed — enforced via Zod, same as TaxRate.ratePercent).
+  ratePercent Decimal @db.Decimal(5, 2)
+
+  // For VAT only: which TaxRate list entry was picked, kept for traceability
+  // ONLY — ratePercent above is still the authoritative value even if this
+  // TaxRate row is later edited or deactivated. Always null for TDS/VDS,
+  // since those have no admin-managed list to reference.
+  sourceTaxRateId String?
+  sourceTaxRate   TaxRate? @relation(fields: [sourceTaxRateId], references: [id])
+
+  computationType TaxComputationType // inclusive/exclusive, per this specific application
+
+  baseAmount Decimal @db.Decimal(18, 2) // amount tax is calculated on
+  taxAmount  Decimal @db.Decimal(18, 2) // calculated result
+
+  // Per business requirement: "tax is auto-calculated but held for manual
+  // review/approval before posting to the ledger"
+  status TaxApplicationStatus @default(PENDING_REVIEW)
+
+  createdById Int?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([journalEntryId])
+  @@index([partnerId])
+  @@index([status])
 }
 
 enum AccountType {
@@ -257,4 +326,15 @@ enum TaxType {
 enum TaxComputationType {
   INCLUSIVE // rate is already baked into the given amount
   EXCLUSIVE // rate should be added on top of the given amount
+}
+
+enum TaxDirection {
+  INPUT // purchases
+  OUTPUT // sales
+}
+
+enum TaxApplicationStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
 }
