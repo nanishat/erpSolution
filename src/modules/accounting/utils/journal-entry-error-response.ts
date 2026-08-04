@@ -10,6 +10,7 @@ import {
   JournalEntryNotFoundError,
   JournalEntryNotPostedError,
   JournalEntryVoidError,
+  PendingTaxApprovalError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
 
@@ -23,7 +24,8 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
     error instanceof JournalEntryImmutableError ||
     error instanceof JournalEntryNotPostedError ||
     error instanceof JournalEntryAlreadyReversedError ||
-    error instanceof CannotReverseAReversalError
+    error instanceof CannotReverseAReversalError ||
+    error instanceof PendingTaxApprovalError
   ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }

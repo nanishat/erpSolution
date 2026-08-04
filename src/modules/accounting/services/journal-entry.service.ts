@@ -79,6 +79,15 @@ export class CannotReverseAReversalError extends Error {
   }
 }
 
+export class PendingTaxApprovalError extends Error {
+  constructor(id: string) {
+    super(
+      `Journal entry ${id} has a tax application still PENDING_REVIEW and cannot be posted until it is approved or rejected`
+    );
+    this.name = "PendingTaxApprovalError";
+  }
+}
+
 const journalEntryInclude = {
   branch: { select: { id: true, name: true, code: true } },
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
@@ -328,6 +337,16 @@ async function postJournalEntryWithClient(
   const inactiveLine = entry.lines.find((line) => !line.account.isActive);
   if (inactiveLine) {
     throw new InactiveAccountJournalLineError(inactiveLine.accountId);
+  }
+
+  // Approval gates posting, not the reverse (confirmed business rule) — any
+  // tax application still awaiting review blocks the entry from posting.
+  const pendingTaxApplication = await tx.taxApplication.findFirst({
+    where: { journalEntryId: entryId, status: "PENDING_REVIEW" },
+    select: { id: true },
+  });
+  if (pendingTaxApplication) {
+    throw new PendingTaxApprovalError(entryId);
   }
 
   return tx.journalEntry.update({

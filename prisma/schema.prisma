@@ -262,7 +262,8 @@ model TaxApplication {
 
   // Per business requirement: "tax is auto-calculated but held for manual
   // review/approval before posting to the ledger"
-  status TaxApplicationStatus @default(PENDING_REVIEW)
+  status          TaxApplicationStatus @default(PENDING_REVIEW)
+  rejectionReason String? // set when status transitions to REJECTED; otherwise null
 
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id])

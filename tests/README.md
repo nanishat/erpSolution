@@ -137,3 +137,40 @@ routes are untouched — still `/api/partners`).
   HR/Inventory remain top-level
 
 No fixture data created, nothing to clean up — pure routing/markup checks.
+
+### `phase2-tax-application-manual-test.ts`
+
+Covers the VAT/TDS/VDS calculation service (`tax-application.service.ts`) and
+the posting gate wired into `postJournalEntry`: `POST /api/tax-applications`,
+`POST /api/tax-applications/[id]/approve`, `POST
+/api/tax-applications/[id]/reject`, and their interaction with `POST
+/api/journal-entries/[id]/post` and `.../reverse`.
+
+- VAT from a `TaxRate`: `EXCLUSIVE` (no partner inclusive-price flag) computes
+  `taxAmount = baseAmount * rate/100`; `INCLUSIVE` (partner
+  `vatInclusiveInPrice: true`) back-calculates from a tax-inclusive
+  `baseAmount` — both checked against a 15% rate landing on a round 150.00
+  either way; `ratePercent` is denormalized from the picked `TaxRate` at
+  creation time
+- TDS with a manually-entered `ratePercent`: no `TaxRate`/`sourceTaxRateId`
+  involved, `computationType` defaults to `EXCLUSIVE`
+- Creating a TDS application for a `tdsExempt: true` partner is rejected with
+  `409` (chosen over silently zeroing the rate — see the service's comment)
+- Posting a journal entry with a `PENDING_REVIEW` tax application is rejected
+  with `409` (`PendingTaxApprovalError`); approving it unblocks posting
+- Re-approving/re-rejecting a tax application that's no longer
+  `PENDING_REVIEW` is rejected with `409`
+- Reversing a `POSTED` entry leaves its `APPROVED` `TaxApplication` untouched
+  (still `APPROVED`, still pointing at the original now-`VOID` entry) — the
+  chosen design: `TaxApplication.status` records whether the *calculation*
+  was correct, not whether the parent transaction is still live (that's
+  `JournalEntry.status`/`reversalOfEntryId`, already the source of truth)
+- Reject flow: `rejectionReason` persists and re-rejecting is blocked
+
+There's no admin CRUD API for `TaxRate` yet (out of scope for this prompt),
+so the one `TaxRate` fixture this script needs is created directly via
+Prisma — same convention as reading branches/accounts directly when no API
+exists for them yet. Branches/accounts are read through `GET /api/branches`
+/ `GET /api/accounts`; partners and journal entries go through their real
+POST endpoints. Same no-cleanup convention and `TEST ... <timestamp>` naming
+as the other scripts.
