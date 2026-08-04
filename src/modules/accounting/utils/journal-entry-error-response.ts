@@ -13,6 +13,12 @@ import {
   PendingTaxApprovalError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
+import {
+  TaxAccountNotConfiguredError,
+  TaxAmountExceedsSettlementError,
+  TaxSettlementLineAmbiguousError,
+  TaxSettlementLineNotFoundError,
+} from "@/modules/tax/services/tax-posting.service";
 
 export function journalEntryErrorResponse(error: unknown): NextResponse {
   if (error instanceof JournalEntryNotFoundError) {
@@ -32,7 +38,11 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
   if (
     error instanceof UnbalancedJournalEntryError ||
     error instanceof InactiveAccountJournalLineError ||
-    error instanceof BranchNotFoundError
+    error instanceof BranchNotFoundError ||
+    error instanceof TaxAccountNotConfiguredError ||
+    error instanceof TaxSettlementLineNotFoundError ||
+    error instanceof TaxSettlementLineAmbiguousError ||
+    error instanceof TaxAmountExceedsSettlementError
   ) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

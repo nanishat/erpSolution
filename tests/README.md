@@ -174,3 +174,59 @@ exists for them yet. Branches/accounts are read through `GET /api/branches`
 / `GET /api/accounts`; partners and journal entries go through their real
 POST endpoints. Same no-cleanup convention and `TEST ... <timestamp>` naming
 as the other scripts.
+
+### `phase3-tax-posting-manual-test.ts`
+
+Covers `tax-posting.service.ts` — the logic that turns an `APPROVED`
+`TaxApplication` into real `JournalLine`s on its parent `JournalEntry`,
+wired into `postJournalEntryWithClient` (runs right before the entry flips
+to `POSTED`, after the existing `PENDING_REVIEW` gate). Requires
+`prisma/seed-tax-accounts.ts` to have been run first (VAT Payable/
+Receivable, TDS/VDS Payable) — the script asserts these accounts exist
+before doing anything else.
+
+Design recap (see the service's doc comment for the full rationale):
+- Tax lines are always added as an equal-and-opposite **pair** — one line on
+  the tax application's resolved *settlement line* (the existing cash/bank/
+  AR/AP leg already on the entry) and one on the tax account itself — so the
+  entry's balance is preserved without ever touching its original lines.
+- **VAT** extends the settlement line (Output VAT: settlement debit grows,
+  e.g. Cash 1000 → 1150 collected; Input VAT: settlement credit grows, e.g.
+  Cash paid 1000 → 1150). VAT Payable/Receivable are separate (unnetted)
+  accounts, not a single VAT control account.
+- **TDS/VDS** offsets the settlement line instead (an extra debit against
+  the existing cash credit) — net cash paid out shrinks by the withheld
+  amount while the expense is still recognized at its full, un-withheld
+  value, and the withheld amount lands in TDS/VDS Payable.
+- Settlement-line resolution is by account `subType` (`CASH`/`BANK`/
+  `RECEIVABLE` for VAT Output and TDS/VDS-relevant debit checks, `CASH`/
+  `BANK`/`PAYABLE` for VAT Input) + side, over the entry's *original* lines
+  only. Requires exactly one match; 0 or 2+ throws rather than guessing.
+
+What's checked, per tax type, using Trial Balance deltas against a
+snapshot taken immediately before each entry is created (this dev DB is
+shared and not cleaned up between runs, so absolute totals aren't
+meaningful — only deltas are):
+- **VAT Output** (sale-shaped entry: Cash debit / Sales Revenue credit):
+  approve + post → VAT Payable credited exactly the tax amount, Cash's
+  total debit grows by principal + tax (not just principal), Sales Revenue
+  is untouched. Reverse → VAT Payable's net balance returns to its
+  pre-entry snapshot, and — re-confirming the Step 0 design — the
+  `TaxApplication` stays `APPROVED` and still points at the original
+  (now-`VOID`) entry.
+- **VAT Input** (purchase-shaped entry: Expense debit / Cash credit):
+  same shape of checks, mirrored — VAT Receivable debited, Cash's total
+  credit grows by principal + tax, nets back to zero on reversal.
+- **TDS** (vendor-payment-shaped entry: Expense debit / Cash credit):
+  approve + post → TDS Payable credited the tax amount, Cash shows *both*
+  the full gross credit *and* a new offsetting debit (net effect: paid out
+  = gross − withheld), Expense is still recognized at the full gross
+  amount. Reverse → TDS Payable nets back to zero, `TaxApplication` stays
+  `APPROVED`.
+- **Negative case**: a `TaxApplication` on an entry with no cash/bank/AR/AP
+  line at all (both lines are Expense/Revenue) is rejected at posting time
+  with `400` and a message naming the missing settlement line — this
+  fails loudly rather than silently skipping the tax posting.
+
+Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
+scripts.

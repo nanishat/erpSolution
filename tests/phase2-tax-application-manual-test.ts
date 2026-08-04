@@ -81,6 +81,7 @@ async function main() {
   const accounts: Account[] = accountsJson.data;
   const cash = accounts.find((a) => a.code === "1010")!;
   const salesRevenue = accounts.find((a) => a.code === "4010")!;
+  const operatingExpense = accounts.find((a) => a.code === "5010")!;
 
   const vatRate = await db.taxRate.create({
     data: {
@@ -267,10 +268,14 @@ async function main() {
 
   // --- 5. Posting is blocked while a TaxApplication is PENDING_REVIEW ---
   console.log("\n--- Posting gate: PENDING_REVIEW blocks posting ---");
+  // Vendor-payment shape (Expense debit / Cash credit), not the sale shape
+  // used elsewhere in this file — VDS/TDS posting (see
+  // tax-posting.service.ts, added once tax posting became a real feature)
+  // requires a credit-side cash/bank line to withhold against.
   const entryGate = await createDraftEntry(
     branch.id,
+    operatingExpense.id,
     cash.id,
-    salesRevenue.id,
     `TEST posting-gate ${stamp}`
   );
   const { json: gateTaxJson } = await api("/api/tax-applications", {

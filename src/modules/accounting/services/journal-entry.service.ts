@@ -6,6 +6,7 @@ import type {
   JournalEntryInput,
   UpdateJournalEntryInput,
 } from "@/modules/accounting/validations/journal-entry.schema";
+import { postApprovedTaxApplicationLines } from "@/modules/tax/services/tax-posting.service";
 
 export class BranchNotFoundError extends Error {
   constructor(id: string) {
@@ -348,6 +349,15 @@ async function postJournalEntryWithClient(
   if (pendingTaxApplication) {
     throw new PendingTaxApprovalError(entryId);
   }
+
+  // Adds the JournalLine pair for every APPROVED tax application on this
+  // entry (VAT Payable/Receivable, TDS/VDS Payable) before posting — see
+  // postApprovedTaxApplicationLines. Runs here rather than at the moment of
+  // approval so a still-DRAFT entry (which may yet be edited wholesale via
+  // updateJournalEntry, which deletes and recreates all lines) never carries
+  // tax lines that could be silently wiped out from under an already-APPROVED
+  // TaxApplication.
+  await postApprovedTaxApplicationLines(tx, entry);
 
   return tx.journalEntry.update({
     where: { id: entryId },
