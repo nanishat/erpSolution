@@ -255,3 +255,33 @@ meaningful — only deltas are):
 
 Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
 scripts.
+
+### `tax-approval-queue-ui-manual-test.ts`
+
+Covers the Tax Approval Queue UI at `/accounting/tax-applications`
+(`TaxApplicationTable.tsx`, backed by the new `listTaxApplications` read in
+`tax-application.service.ts`) — UI only, built on top of the approve/reject
+API already covered end-to-end by `phase2-tax-application-manual-test.ts`.
+No headless-browser/JSDOM runner is wired up, so — same convention as
+`phase2-partner-ui-manual-test.ts` — this fetches the server-rendered HTML
+and asserts on markup rather than driving a real browser. The page's status
+filter is a client-side React state default (`"PENDING_REVIEW"`), which
+React still applies while rendering the initial HTML on the server, so a
+plain fetch of the page already reflects the default-filtered view.
+
+- Page renders: heading present, an `ALL` status filter option exists, and
+  both fixture entries' document numbers appear (both start `PENDING_REVIEW`)
+- Approve flow: `POST /api/tax-applications/[id]/approve` flips status to
+  `APPROVED`, and the entry's document number disappears from the next
+  fetch of the default-filtered page while the other, still-pending entry's
+  document number remains
+- Reject flow: `POST /api/tax-applications/[id]/reject` with a reason
+  persists `rejectionReason` (checked via both the API response and a direct
+  DB read) and the entry likewise disappears from the default-filtered view
+
+Fixtures: reads `GET /api/branches` / `GET /api/accounts`, creates draft
+entries via `POST /api/journal-entries` and `VDS` tax applications via `POST
+/api/tax-applications` (manual `ratePercent`, no `TaxRate` fixture needed —
+same choice as the "gate"/reject cases in
+`phase2-tax-application-manual-test.ts`). Same no-cleanup convention and
+`TEST ... <timestamp>` naming as the other scripts.

@@ -1,9 +1,18 @@
-import type { TaxApplication, TaxComputationType } from "@prisma/client";
+import { Prisma, type TaxApplication, type TaxComputationType } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { JournalEntryNotFoundError } from "@/modules/accounting/services/journal-entry.service";
 import { PartnerNotFoundError } from "@/modules/partners/services/partner.service";
 import type { CreateTaxApplicationInput } from "@/modules/tax/validations/tax-application.schema";
+
+const taxApplicationListInclude = {
+  journalEntry: { select: { id: true, documentNumber: true } },
+  partner: { select: { id: true, name: true } },
+} satisfies Prisma.TaxApplicationInclude;
+
+export type TaxApplicationListItem = Prisma.TaxApplicationGetPayload<{
+  include: typeof taxApplicationListInclude;
+}>;
 
 export class TaxRateNotFoundError extends Error {
   constructor(id: string) {
@@ -72,6 +81,15 @@ function calculateTaxAmount(
     return roundCurrency((baseAmount * ratePercent) / (100 + ratePercent));
   }
   return roundCurrency(baseAmount * (ratePercent / 100));
+}
+
+// Newest first — the approval queue cares most about what just landed,
+// not chronological history.
+export async function listTaxApplications(): Promise<TaxApplicationListItem[]> {
+  return db.taxApplication.findMany({
+    include: taxApplicationListInclude,
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 /**
