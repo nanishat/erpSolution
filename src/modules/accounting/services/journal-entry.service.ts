@@ -94,6 +94,13 @@ const journalEntryInclude = {
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
   reversalOfEntry: { select: { id: true, documentNumber: true } },
   reversedByEntry: { select: { id: true, documentNumber: true } },
+  taxApplications: {
+    include: {
+      partner: { select: { id: true, name: true } },
+      sourceTaxRate: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  },
 } satisfies Prisma.JournalEntryInclude;
 
 export type JournalEntryWithLines = Prisma.JournalEntryGetPayload<{

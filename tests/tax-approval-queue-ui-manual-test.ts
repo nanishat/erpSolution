@@ -12,6 +12,16 @@
 // already filtered to PENDING_REVIEW rows — that's what lets this script
 // assert "disappears from the default filtered view" from a plain fetch.
 //
+// Caveat: TaxApplicationTable receives its full, unfiltered data as a
+// client-component prop, and Next.js also embeds that as a serialized RSC
+// payload elsewhere in the same HTML document (for hydration) — so a plain
+// substring search for a document number matches even on rows correctly
+// hidden from the *visible* table by the filter. `appearsRendered` checks
+// for the actual rendered anchor text (`>value<`) instead, which only shows
+// up in the real server-rendered DOM. (An earlier version of this test used
+// a plain substring check and produced a false failure — see
+// phase2-full-integration-manual-test.ts for where that was caught.)
+//
 // Same conventions as the other Phase 1/2 scripts: doesn't clean up after
 // itself, safe to re-run, uses `TEST ... <timestamp>` naming.
 import "dotenv/config";
@@ -46,6 +56,17 @@ async function page(path: string) {
   const res = await fetch(`${BASE_URL}${path}`);
   const html = await res.text();
   return { res, html };
+}
+
+// Client components (TaxApplicationTable) receive their full, unfiltered
+// data as props, and Next.js embeds that as a serialized RSC payload
+// elsewhere in the same HTML document for hydration — so a plain substring
+// search for a document number matches even when that row is correctly
+// hidden from the *visible* table by the client-side status filter. Check
+// for the rendered anchor text specifically (`>value<`) instead, which only
+// appears in the actual server-rendered DOM, not the JSON-escaped payload.
+function appearsRendered(html: string, text: string): boolean {
+  return html.includes(`>${text}<`);
 }
 
 type Account = { id: string; code: string };
@@ -140,13 +161,13 @@ async function main() {
   );
   check(
     "Approve-target entry's document number appears (PENDING_REVIEW, default filter)",
-    listHtmlBefore.includes(entryToApprove.documentNumber),
-    `looked for "${entryToApprove.documentNumber}"`
+    appearsRendered(listHtmlBefore, entryToApprove.documentNumber),
+    `looked for rendered ">${entryToApprove.documentNumber}<"`
   );
   check(
     "Reject-target entry's document number appears (PENDING_REVIEW, default filter)",
-    listHtmlBefore.includes(entryToReject.documentNumber),
-    `looked for "${entryToReject.documentNumber}"`
+    appearsRendered(listHtmlBefore, entryToReject.documentNumber),
+    `looked for rendered ">${entryToReject.documentNumber}<"`
   );
 
   // --- 2. Approve flow: pending -> approved, disappears from default filtered view ---
@@ -165,13 +186,13 @@ async function main() {
   const { html: listHtmlAfterApprove } = await page("/accounting/tax-applications");
   check(
     "Approved entry's document number no longer appears in the default (PENDING_REVIEW) view",
-    !listHtmlAfterApprove.includes(entryToApprove.documentNumber),
-    `looked for absence of "${entryToApprove.documentNumber}"`
+    !appearsRendered(listHtmlAfterApprove, entryToApprove.documentNumber),
+    `looked for absence of rendered ">${entryToApprove.documentNumber}<"`
   );
   check(
     "Still-pending reject-target entry's document number still appears",
-    listHtmlAfterApprove.includes(entryToReject.documentNumber),
-    `looked for "${entryToReject.documentNumber}"`
+    appearsRendered(listHtmlAfterApprove, entryToReject.documentNumber),
+    `looked for rendered ">${entryToReject.documentNumber}<"`
   );
 
   // --- 3. Reject flow: reason is recorded, disappears from default filtered view ---
@@ -205,8 +226,8 @@ async function main() {
   const { html: listHtmlAfterReject } = await page("/accounting/tax-applications");
   check(
     "Rejected entry's document number no longer appears in the default (PENDING_REVIEW) view",
-    !listHtmlAfterReject.includes(entryToReject.documentNumber),
-    `looked for absence of "${entryToReject.documentNumber}"`
+    !appearsRendered(listHtmlAfterReject, entryToReject.documentNumber),
+    `looked for absence of rendered ">${entryToReject.documentNumber}<"`
   );
 
   console.log(`\n=== ${pass} passed, ${fail} failed ===`);

@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 
 import { getJournalEntryById } from "@/modules/accounting/services/journal-entry.service";
 import { JournalEntryDetailActions } from "@/modules/accounting/components/JournalEntryDetailActions";
+import { JournalEntryTaxApplications } from "@/modules/accounting/components/JournalEntryTaxApplications";
 import { VOUCHER_TYPE_LABELS } from "@/modules/accounting/constants/voucher-type";
+import { listPartners } from "@/modules/partners/services/partner.service";
+import { AddTaxApplicationForm } from "@/modules/tax/components/AddTaxApplicationForm";
+import { listTaxRates } from "@/modules/tax/services/tax-rate.service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +22,15 @@ export default async function JournalEntryDetailPage({
   if (!entry) {
     notFound();
   }
+
+  // Tax can only be attached before the entry is posted — once POSTED, the
+  // real ledger lines already exist and adding tax after the fact would
+  // require re-posting, which is out of scope here (see
+  // postApprovedTaxApplicationLines in tax-posting.service.ts).
+  const [partners, vatRates] =
+    entry.status === "DRAFT"
+      ? await Promise.all([listPartners({ isActive: true }), listTaxRates({ type: "VAT" })])
+      : [[], []];
 
   const totalDebit = entry.lines.reduce((sum, line) => sum + Number(line.debit), 0);
   const totalCredit = entry.lines.reduce((sum, line) => sum + Number(line.credit), 0);
@@ -121,6 +134,12 @@ export default async function JournalEntryDetailPage({
           </tfoot>
         </table>
       </div>
+
+      <JournalEntryTaxApplications taxApplications={entry.taxApplications} />
+
+      {entry.status === "DRAFT" && (
+        <AddTaxApplicationForm journalEntryId={entry.id} partners={partners} vatRates={vatRates} />
+      )}
 
       <Link href="/accounting" className="text-sm text-primary underline-offset-4 hover:underline">
         ← Back to journal entries

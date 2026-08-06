@@ -285,3 +285,48 @@ entries via `POST /api/journal-entries` and `VDS` tax applications via `POST
 same choice as the "gate"/reject cases in
 `phase2-tax-application-manual-test.ts`). Same no-cleanup convention and
 `TEST ... <timestamp>` naming as the other scripts.
+
+Presence/absence checks against the filtered view use an `appearsRendered`
+helper (`html.includes(">value<")`), not a plain substring search — a plain
+substring search produces a false failure here, because
+`TaxApplicationTable` receives its full, unfiltered data as a client
+component prop, and Next.js also embeds that as a serialized RSC payload
+elsewhere in the same HTML document for hydration. The document number is
+always present *somewhere* in the page source regardless of the visible
+filter; only the rendered anchor text (`>value<`) reflects what's actually
+shown in the table.
+
+### `phase2-full-integration-manual-test.ts`
+
+The Phase 2 (Partners & Tax Engine) capstone test — walks the actual UI/API
+surface end to end across all three tax-tooling prompts, proving they're
+wired together rather than three independent islands:
+
+- **TaxRate admin UI** (`POST /api/tax-rates`, the endpoint `TaxRateForm`
+  submits to) to enter a real VAT rate, then confirms it renders on
+  `/accounting/tax-rates`
+- **Add Tax on a voucher** (`POST /api/tax-applications`, the endpoint
+  `AddTaxApplicationForm` submits to — see the "Add tax" action added to the
+  journal entry detail page, previously the missing connective tissue
+  between vouchers and tax) to attach the VAT application to a real draft
+  journal entry, confirmed via the entry detail page's rendered markup
+- **Approval Queue UI** (`POST /api/tax-applications/[id]/approve`, the
+  endpoint the queue's Approve button calls) to approve it, confirmed by the
+  entry disappearing from the queue's default-filtered rendered table
+  (`appearsRendered` check, not a plain substring search — see the note
+  above)
+- Posting is rejected with `409` while `PENDING_REVIEW`, then succeeds once
+  `APPROVED` — proving the approval gate is real, not just a status label
+- Trial Balance deltas confirm VAT Payable is credited exactly the tax
+  amount, Cash is extended by principal + tax, Sales Revenue is untouched;
+  reversal nets VAT Payable back to its pre-entry balance
+- Repeats the posting-gate -> approve -> post -> Trial Balance -> reverse
+  sequence for a TDS application with a manually-entered rate (no `TaxRate`
+  needed), confirming TDS Payable, Cash's gross-credit-plus-withholding-debit
+  shape, and full (un-withheld) expense recognition
+
+Requires `prisma/seed-tax-accounts.ts` to have been run first. Same
+no-cleanup convention and `TEST ... <timestamp>` naming as the other
+scripts; every Trial Balance assertion compares against a snapshot taken
+immediately before the entry under test is created, not an assumed zero
+baseline.
