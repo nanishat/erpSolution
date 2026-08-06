@@ -175,6 +175,31 @@ exists for them yet. Branches/accounts are read through `GET /api/branches`
 POST endpoints. Same no-cleanup convention and `TEST ... <timestamp>` naming
 as the other scripts.
 
+### `tax-rate-manual-test.ts`
+
+Covers the admin CRUD service/API layer for `TaxRate` (`tax-rate.service.ts`)
+— fills the gap flagged above ("no admin CRUD API for TaxRate yet"): `POST
+/api/tax-rates`, `GET /api/tax-rates`, `GET /api/tax-rates/[id]`, `PATCH
+/api/tax-rates/[id]`, `DELETE /api/tax-rates/[id]` (soft delete via
+`isActive`).
+
+- Create succeeds, `computationType` defaults to `EXCLUSIVE`, new rates start
+  `isActive: true`
+- `ratePercent` validation: fractional values (7.5) are accepted, values
+  above 15 or below 0 are rejected with `400`
+- Created rate shows up in the default list
+- `PATCH` persists field changes; `PATCH`/`DELETE` on a nonexistent id are
+  rejected with `404`
+- Deactivating (`DELETE`) excludes the rate from the default `GET
+  /api/tax-rates` list but it's still fetchable by id, and reappears when
+  `?isActive=false` is passed explicitly — deactivation is never blocked by
+  existing `TaxApplication` references, since those denormalize their own
+  `ratePercent` at creation time (see the service's doc comment)
+
+No fixtures needed from other modules — everything goes through the real
+`/api/tax-rates` API. Same no-cleanup convention and `TEST ... <timestamp>`
+naming as the other scripts.
+
 ### `phase3-tax-posting-manual-test.ts`
 
 Covers `tax-posting.service.ts` — the logic that turns an `APPROVED`

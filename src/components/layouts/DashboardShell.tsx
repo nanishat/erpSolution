@@ -31,6 +31,7 @@ const navItems: NavEntry[] = [
       { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
       { label: "Trial Balance", href: "/accounting/reports/trial-balance" },
       { label: "Partners", href: "/accounting/partners" },
+      { label: "Tax Rates", href: "/accounting/tax-rates" },
     ],
   },
   { type: "link", label: "HR", href: "/hr" },
