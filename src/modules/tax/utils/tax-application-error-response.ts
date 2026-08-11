@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { JournalEntryNotFoundError } from "@/modules/accounting/services/journal-entry.service";
 import { PartnerNotFoundError } from "@/modules/partners/services/partner.service";
 import {
+  JournalEntryNotDraftError,
   PartnerTdsExemptError,
   TaxApplicationNotFoundError,
   TaxApplicationNotPendingError,
@@ -29,7 +30,8 @@ export function taxApplicationErrorResponse(error: unknown): NextResponse {
   }
   if (
     error instanceof TaxApplicationNotPendingError ||
-    error instanceof PartnerTdsExemptError
+    error instanceof PartnerTdsExemptError ||
+    error instanceof JournalEntryNotDraftError
   ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }

@@ -175,6 +175,28 @@ exists for them yet. Branches/accounts are read through `GET /api/branches`
 POST endpoints. Same no-cleanup convention and `TEST ... <timestamp>` naming
 as the other scripts.
 
+### `tax-application-draft-guard-manual-test.ts`
+
+Phase 2 review follow-up: `createTaxApplication` previously only checked that
+the target `JournalEntry` existed, not that it was still `DRAFT`. The UI
+already guards this (Add Tax only renders for `DRAFT` entries), but a direct
+API call could attach a `TaxApplication` to an already-`POSTED` or `VOID`
+entry, whose tax would then never get picked up by `postJournalEntry` and
+would silently never reach the ledger. Covers the new
+`JournalEntryNotDraftError` guard:
+
+- Attaching a `TaxApplication` to a `POSTED` entry is rejected with `409`,
+  the error message names both the actual status and `DRAFT`, and no row is
+  created
+- Attaching a `TaxApplication` to a `VOID` entry (posted, then reversed) is
+  rejected the same way
+- Regression check: a `DRAFT` entry still accepts a `TaxApplication` exactly
+  as before
+
+Reads `GET /api/branches` / `GET /api/accounts` for fixture data; journal
+entries and tax applications go through their real POST endpoints. Same
+no-cleanup convention and `TEST ... <timestamp>` naming as the other scripts.
+
 ### `tax-rate-manual-test.ts`
 
 Covers the admin CRUD service/API layer for `TaxRate` (`tax-rate.service.ts`)

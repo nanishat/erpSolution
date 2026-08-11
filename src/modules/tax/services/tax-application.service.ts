@@ -51,6 +51,15 @@ export class PartnerTdsExemptError extends Error {
   }
 }
 
+export class JournalEntryNotDraftError extends Error {
+  constructor(id: string, status: string) {
+    super(
+      `Journal entry ${id} is ${status}, not DRAFT — tax applications can only be added to a draft entry`
+    );
+    this.name = "JournalEntryNotDraftError";
+  }
+}
+
 export class TaxApplicationNotFoundError extends Error {
   constructor(id: string) {
     super(`Tax application ${id} not found`);
@@ -115,10 +124,17 @@ export async function createTaxApplication(
   return db.$transaction(async (tx) => {
     const journalEntry = await tx.journalEntry.findUnique({
       where: { id: input.journalEntryId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!journalEntry) {
       throw new JournalEntryNotFoundError(input.journalEntryId);
+    }
+    // The UI only offers "Add Tax" on DRAFT entries, but the service must
+    // enforce it too — a TaxApplication attached to a POSTED/VOID entry
+    // would never get picked up by postJournalEntry and its tax would
+    // silently never reach the ledger.
+    if (journalEntry.status !== "DRAFT") {
+      throw new JournalEntryNotDraftError(input.journalEntryId, journalEntry.status);
     }
 
     const partner = input.partnerId
