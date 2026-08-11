@@ -16,6 +16,7 @@ model User {
   chartOfAccounts ChartOfAccount[]
   partners        Partner[]
   taxApplications TaxApplication[]
+  productServices ProductService[]
 }
 
 model Branch {
@@ -119,6 +120,9 @@ model ChartOfAccount {
 
   journalLines JournalLine[]
 
+  incomeProductServices  ProductService[] @relation("ProductServiceIncomeAccount")
+  expenseProductServices ProductService[] @relation("ProductServiceExpenseAccount")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -174,6 +178,50 @@ model Partner {
 
   @@index([type])
   @@index([tin])
+}
+
+// Catalog of billable items/services that appear on invoice lines, mapped to
+// the ChartOfAccount rows they hit when invoiced. Schema only for now — no
+// service/API/UI layer yet, matching how ChartOfAccount/Partner/TaxRate were
+// introduced. Deliberately has no default tax rate: tax stays manually
+// selected per invoice line, same as vouchers today (see TaxApplication).
+model ProductService {
+  id          String             @id @default(cuid())
+  code        String             @unique
+  name        String
+  description String?
+  type        ProductServiceType
+
+  // Default unit price — invoice lines can override this per-invoice, this
+  // is just the catalog default
+  unitPrice Decimal @default(0) @db.Decimal(18, 2)
+  unit      String? // e.g. "per guard/month", "per hour", "per visit" — free
+  // text since Protection One's billing units vary (manpower deployment, not
+  // just flat products)
+
+  // Account mapping — this is the core purpose of this model
+  incomeAccountId String // required: which revenue account this hits when
+  // invoiced/sold
+  incomeAccount ChartOfAccount @relation("ProductServiceIncomeAccount", fields: [incomeAccountId], references: [id])
+
+  expenseAccountId String? // optional: which expense/COGS account this hits
+  // if there's a cost side (not every service will have one tracked this way
+  // yet — e.g. guard service cost is really payroll, which isn't wired up
+  // yet, so leave this nullable rather than forcing a placeholder mapping)
+  expenseAccount ChartOfAccount? @relation("ProductServiceExpenseAccount", fields: [expenseAccountId], references: [id])
+
+  isActive Boolean @default(true)
+
+  createdById Int?
+  createdBy   User? @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // InvoiceLine relation attaches here in the next Phase 3 schema step
+
+  @@index([type])
+  @@index([isActive])
 }
 
 // Admin-maintained reference list of VAT rates (e.g. Standard 15%, Exempt
@@ -316,6 +364,11 @@ enum VoucherType {
 enum PartnerType {
   CUSTOMER
   VENDOR
+}
+
+enum ProductServiceType {
+  PRODUCT
+  SERVICE
 }
 
 enum TaxType {
