@@ -17,6 +17,7 @@ model User {
   partners        Partner[]
   taxApplications TaxApplication[]
   productServices ProductService[]
+  invoices        Invoice[]
 }
 
 model Branch {
@@ -25,10 +26,12 @@ model Branch {
   code         String  @unique
   isHeadOffice Boolean @default(false)
 
-  journalEntries    JournalEntry[]
-  journalLines      JournalLine[]
-  documentSequences DocumentSequence[]
-  localPartners     Partner[]
+  journalEntries           JournalEntry[]
+  journalLines             JournalLine[]
+  documentSequences        DocumentSequence[]
+  invoiceDocumentSequences InvoiceDocumentSequence[]
+  localPartners            Partner[]
+  invoices                 Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -58,6 +61,11 @@ model JournalEntry {
   reversedByEntry   JournalEntry? @relation("JournalEntryReversal")
 
   taxApplications TaxApplication[]
+
+  // Nullable: most JournalEntry rows still come from vouchers, not invoices.
+  // The FK lives on Invoice (journalEntryId is @unique there), so this is a
+  // pure back-relation with no fields/references of its own.
+  invoice Invoice?
 
   @@index([date])
   @@index([branchId])
@@ -92,6 +100,31 @@ model DocumentSequence {
   lastNumber  Int         @default(0)
 
   @@unique([voucherType, branchId, yearMonth])
+}
+
+// Parallel sequence table for invoice numbering (Sector/Branch/YYYYMM/Seq,
+// e.g. "GS/HO/202608/0001") rather than reusing DocumentSequence. Kept
+// separate instead of generalizing DocumentSequence.voucherType into a
+// shared String key because the two key types aren't actually the same
+// shape: voucherType is a closed 4-value enum (VoucherType) that
+// generateDocumentNumber exhaustiveness-checks via a Record lookup, while
+// sector is explicitly open-vocabulary free text (the full sector list
+// isn't known yet — see Invoice.sector). Loosening the voucher path's enum
+// to a string just to share one table would cost real type safety on
+// existing, working code for a dimension that doesn't apply to it. This
+// table mirrors DocumentSequence's shape 1:1 (same upsert + atomic
+// `increment` pattern will apply in the number-generation service), so the
+// two are conceptually and structurally identical — just intentionally
+// not the same table.
+model InvoiceDocumentSequence {
+  id         String @id @default(cuid())
+  sector     String
+  branchId   String
+  branch     Branch @relation(fields: [branchId], references: [id])
+  yearMonth  String
+  lastNumber Int    @default(0)
+
+  @@unique([sector, branchId, yearMonth])
 }
 
 model ChartOfAccount {
@@ -173,8 +206,9 @@ model Partner {
   updatedAt DateTime @updatedAt
 
   taxApplications TaxApplication[]
+  invoices        Invoice[]
 
-  // Invoice/payment relations attach here in Phase 3/4
+  // Payment relations attach here in Phase 4
 
   @@index([type])
   @@index([tin])
@@ -218,10 +252,84 @@ model ProductService {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // InvoiceLine relation attaches here in the next Phase 3 schema step
+  invoiceLines InvoiceLine[]
 
   @@index([type])
   @@index([isActive])
+}
+
+// Invoice header. Numbered Sector/Branch/YYYYMM/Seq (e.g. "GS/HO/202608/0001")
+// via InvoiceDocumentSequence — see that model for why it's a separate
+// sequence table from vouchers' DocumentSequence. Creation eagerly creates a
+// DRAFT JournalEntry (journalEntryId is required + @unique, i.e. a strict
+// 1:1), mirroring how vouchers already work — no schema gymnastics needed.
+// Tax is NOT modeled here: it attaches at the JournalEntry level via the
+// existing TaxApplication mechanism (same as vouchers), since
+// TaxApplication.journalEntryId already covers an invoice's entry.
+// Schema only for now — no service/API/UI layer yet.
+model Invoice {
+  id            String @id @default(cuid())
+  invoiceNumber String @unique // auto-generated, Sector/Branch/YYYYMM/Seq
+
+  sector String // free text, e.g. "GS", "CC" — full sector list isn't known
+  // yet, so this is intentionally not an enum (same precedent as
+  // TaxRate.category)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  partnerId String // must reference a CUSTOMER-type Partner — enforced in
+  // the service layer, not a DB constraint (Prisma can't check the enum
+  // value of a related row at the FK level)
+  partner Partner @relation(fields: [partnerId], references: [id])
+
+  date    DateTime
+  dueDate DateTime?
+
+  status InvoiceStatus @default(DRAFT)
+
+  // Eagerly created at invoice creation time, mirrors voucher pattern —
+  // required, not nullable, and 1:1 (an invoice has exactly one JournalEntry)
+  journalEntryId String       @unique
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
+
+  subtotal   Decimal @default(0) @db.Decimal(18, 2)
+  taxTotal   Decimal @default(0) @db.Decimal(18, 2)
+  grandTotal Decimal @default(0) @db.Decimal(18, 2)
+  amountPaid Decimal @default(0) @db.Decimal(18, 2)
+
+  notes String?
+
+  lines InvoiceLine[]
+
+  createdById Int?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([branchId])
+  @@index([status])
+}
+
+model InvoiceLine {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  productServiceId String? // nullable — allow a free-text line that isn't
+  // tied to the catalog, in case Protection One needs an ad-hoc billing line
+  productService ProductService? @relation(fields: [productServiceId], references: [id])
+
+  description String // required regardless — either copied from
+  // ProductService or typed fresh
+  quantity  Decimal @default(1) @db.Decimal(10, 2)
+  unitPrice Decimal @db.Decimal(18, 2)
+  lineTotal Decimal @db.Decimal(18, 2)
+
+  sortOrder Int @default(0)
+
+  @@index([invoiceId])
 }
 
 // Admin-maintained reference list of VAT rates (e.g. Standard 15%, Exempt
@@ -369,6 +477,15 @@ enum PartnerType {
 enum ProductServiceType {
   PRODUCT
   SERVICE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  POSTED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+  VOID
 }
 
 enum TaxType {
