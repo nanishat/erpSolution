@@ -4,7 +4,11 @@ import { useState } from "react";
 import { VoucherType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
-import { VOUCHER_TYPE_DESCRIPTIONS, VOUCHER_TYPE_LABELS } from "@/modules/accounting/constants/voucher-type";
+import {
+  USER_CREATABLE_VOUCHER_TYPES,
+  VOUCHER_TYPE_DESCRIPTIONS,
+  VOUCHER_TYPE_LABELS,
+} from "@/modules/accounting/constants/voucher-type";
 import { CashVoucherForm } from "@/modules/accounting/components/CashVoucherForm";
 import { DebitVoucherForm } from "@/modules/accounting/components/DebitVoucherForm";
 import { CreditVoucherForm } from "@/modules/accounting/components/CreditVoucherForm";
@@ -12,7 +16,7 @@ import { JournalEntryForm } from "@/modules/accounting/components/JournalEntryFo
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { BranchOption } from "@/modules/core/services/branch.service";
 
-const VOUCHER_TYPES = Object.values(VoucherType);
+const VOUCHER_TYPES = USER_CREATABLE_VOUCHER_TYPES;
 
 export function JournalEntryTypePicker({
   accounts,

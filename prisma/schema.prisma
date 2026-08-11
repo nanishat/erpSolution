@@ -467,6 +467,13 @@ enum VoucherType {
   CREDIT_VOUCHER
   JOURNAL_VOUCHER
   CASH_VOUCHER
+  // Stamped on the JournalEntry that Invoice creation eagerly creates (see
+  // Invoice model) — not a user-selectable voucher type, so it's excluded
+  // from the voucher-type picker/form dropdowns (JournalEntryTypePicker.tsx,
+  // JournalEntryForm.tsx). Still a real VoucherType because
+  // JournalEntry.documentNumber is required + unique regardless of origin,
+  // and generateDocumentNumber's short-code lookup needs one.
+  INVOICE_VOUCHER
 }
 
 enum PartnerType {

@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "VoucherType" ADD VALUE 'INVOICE_VOUCHER';

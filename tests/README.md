@@ -352,3 +352,43 @@ no-cleanup convention and `TEST ... <timestamp>` naming as the other
 scripts; every Trial Balance assertion compares against a snapshot taken
 immediately before the entry under test is created, not an assumed zero
 baseline.
+
+### `phase3-invoice-manual-test.ts`
+
+Covers the Invoice draft creation service (`invoice.service.ts`) and its
+invoice-number sequence (`invoice-document-sequence.service.ts`) — the first
+Phase 3 (Invoicing & Billing) service. **Deviates** from every other script's
+convention: Invoice creation has no API/UI layer yet (explicitly out of scope
+for this prompt), so `createInvoice` is called directly against the dev DB
+rather than through an HTTP endpoint. Inputs are still run through
+`createInvoiceSchema` first (mirroring what a future API route will do), so
+the Zod layer — including `sector`'s uppercase normalization — is exercised
+too. ProductService likewise has no API/UI yet (schema-only Phase 3 catalog),
+so its two fixtures are created directly via Prisma, same convention as
+`phase2-tax-application-manual-test.ts`'s `TaxRate` fixture. Branch/account
+lookups and the `CUSTOMER`/`VENDOR` partner fixtures go through the real API.
+
+- Creating an invoice with 2 lines against 2 different `ProductService` rows
+  (different `incomeAccountId`s each): invoice number format is
+  `SECTOR/BranchCode/YYYYMM/0001` with `sector` uppercased from lowercase
+  input; each line's `lineTotal = quantity * unitPrice`; `subtotal` is their
+  sum; `taxTotal` is `0` and `grandTotal = subtotal` at creation (tax attaches
+  later via the existing `TaxApplication` flow, unchanged); the eagerly-created
+  `JournalEntry` is `DRAFT` with `voucherType: INVOICE_VOUCHER`, has exactly 3
+  lines (one Accounts Receivable debit for the full subtotal + one grouped
+  credit line per distinct income account), and balances (total debit = total
+  credit)
+- A second invoice in the same sector/branch/month increments to `0002`; a
+  different sector resets its own sequence to `0001` (branch/month-boundary
+  increments aren't covered — only one branch exists in this dev DB)
+- Creating an invoice against a `VENDOR`-type partner is rejected with
+  `PartnerNotCustomerError`
+- A line with no `productServiceId` (no catalog reference, therefore no
+  income account to credit) is rejected with
+  `InvoiceLineMissingIncomeAccountError`, and confirms no `Invoice` row was
+  left behind — the whole creation runs in one transaction that rolls back
+  on any rejection
+
+Same no-cleanup convention as the other scripts; uses a timestamp-derived
+sector instead of `TEST ...` naming (sector is a short code, not a free-text
+name field) so re-runs don't collide.

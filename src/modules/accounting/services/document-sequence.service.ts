@@ -5,6 +5,7 @@ const VOUCHER_TYPE_SHORT_CODE: Record<VoucherType, string> = {
   CREDIT_VOUCHER: "CV",
   JOURNAL_VOUCHER: "JV",
   CASH_VOUCHER: "CSV",
+  INVOICE_VOUCHER: "IV",
 };
 
 /** "202607" for a UTC date in July 2026. */

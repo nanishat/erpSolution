@@ -123,48 +123,68 @@ export async function getJournalEntryById(
   });
 }
 
-export async function createJournalEntry(
+async function createJournalEntryWithClient(
+  tx: Prisma.TransactionClient,
   input: JournalEntryInput,
   createdById: string
 ): Promise<JournalEntryWithLines> {
-  return db.$transaction(async (tx) => {
-    const branch = await tx.branch.findUnique({
-      where: { id: input.branchId },
-      select: { code: true },
-    });
-    if (!branch) {
-      throw new BranchNotFoundError(input.branchId);
-    }
-
-    const documentNumber = await generateDocumentNumber(tx, {
-      voucherType: input.voucherType,
-      branchId: input.branchId,
-      branchCode: branch.code,
-      date: input.date,
-    });
-
-    return tx.journalEntry.create({
-      data: {
-        date: input.date,
-        description: input.description,
-        reference: input.reference,
-        branchId: input.branchId,
-        voucherType: input.voucherType,
-        documentNumber,
-        createdById,
-        lines: {
-          create: input.lines.map((line) => ({
-            accountId: line.accountId,
-            branchId: line.branchId,
-            debit: line.debit,
-            credit: line.credit,
-            memo: line.memo,
-          })),
-        },
-      },
-      include: journalEntryInclude,
-    });
+  const branch = await tx.branch.findUnique({
+    where: { id: input.branchId },
+    select: { code: true },
   });
+  if (!branch) {
+    throw new BranchNotFoundError(input.branchId);
+  }
+
+  const documentNumber = await generateDocumentNumber(tx, {
+    voucherType: input.voucherType,
+    branchId: input.branchId,
+    branchCode: branch.code,
+    date: input.date,
+  });
+
+  return tx.journalEntry.create({
+    data: {
+      date: input.date,
+      description: input.description,
+      reference: input.reference,
+      branchId: input.branchId,
+      voucherType: input.voucherType,
+      documentNumber,
+      createdById,
+      lines: {
+        create: input.lines.map((line) => ({
+          accountId: line.accountId,
+          branchId: line.branchId,
+          debit: line.debit,
+          credit: line.credit,
+          memo: line.memo,
+        })),
+      },
+    },
+    include: journalEntryInclude,
+  });
+}
+
+/**
+ * Creates a JournalEntry with its lines and a generated document number.
+ * Pass `tx` to run as part of an already-open transaction (e.g. Invoice
+ * creation, which needs the entry, the Invoice row, and its lines to commit
+ * atomically) — mirrors the optional-tx pattern already used by
+ * postJournalEntry/reverseJournalEntry below; otherwise a new transaction is
+ * opened for this call alone.
+ */
+export async function createJournalEntry(
+  input: JournalEntryInput,
+  createdById: string,
+  tx?: Prisma.TransactionClient
+): Promise<JournalEntryWithLines> {
+  if (tx) {
+    return createJournalEntryWithClient(tx, input, createdById);
+  }
+  return db.$transaction((transaction) =>
+    createJournalEntryWithClient(transaction, input, createdById)
+  );
 }
 
 /**

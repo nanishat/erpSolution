@@ -4,11 +4,14 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFieldArray, useForm, useWatch, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { VoucherType } from "@prisma/client";
 import type { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { createJournalEntryAction } from "@/modules/accounting/actions/journal-entry.actions";
+import {
+  USER_CREATABLE_VOUCHER_TYPES,
+  VOUCHER_TYPE_LABELS,
+} from "@/modules/accounting/constants/voucher-type";
 import type {
   ChartOfAccountOption,
   JournalEntryWithLines,
@@ -24,13 +27,6 @@ import type { BranchOption } from "@/modules/core/services/branch.service";
 // from its *output* shape (post-validation, sent to the server action), so the
 // form is typed with both via react-hook-form's TFieldValues/TTransformedValues.
 type JournalEntryFormValues = z.input<typeof journalEntrySchema>;
-
-const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {
-  DEBIT_VOUCHER: "Debit Voucher",
-  CREDIT_VOUCHER: "Credit Voucher",
-  JOURNAL_VOUCHER: "Journal Voucher",
-  CASH_VOUCHER: "Cash Voucher",
-};
 
 const emptyLine = (branchId: string): JournalEntryFormValues["lines"][number] => ({
   accountId: "",
@@ -220,7 +216,7 @@ export function JournalEntryForm({
             <option value="" disabled>
               Select voucher type
             </option>
-            {Object.values(VoucherType).map((voucherType) => (
+            {USER_CREATABLE_VOUCHER_TYPES.map((voucherType) => (
               <option key={voucherType} value={voucherType}>
                 {VOUCHER_TYPE_LABELS[voucherType]}
               </option>
