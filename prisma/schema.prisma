@@ -26,12 +26,13 @@ model Branch {
   code         String  @unique
   isHeadOffice Boolean @default(false)
 
-  journalEntries           JournalEntry[]
-  journalLines             JournalLine[]
-  documentSequences        DocumentSequence[]
-  invoiceDocumentSequences InvoiceDocumentSequence[]
-  localPartners            Partner[]
-  invoices                 Invoice[]
+  journalEntries              JournalEntry[]
+  journalLines                JournalLine[]
+  documentSequences           DocumentSequence[]
+  invoiceDocumentSequences    InvoiceDocumentSequence[]
+  vendorBillDocumentSequences VendorBillDocumentSequence[]
+  localPartners               Partner[]
+  invoices                    Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -127,6 +128,22 @@ model InvoiceDocumentSequence {
   @@unique([sector, branchId, yearMonth])
 }
 
+// Vendor Bill numbering (direction: VENDOR on Invoice) does NOT use sector —
+// per the locked decision, Vendor Bills get their own separate numbering
+// scheme entirely, not Sector/Branch/YYYYMM/Seq. Mirrors
+// InvoiceDocumentSequence's shape 1:1 minus the sector column, same
+// upsert + atomic `increment` pattern (see generateVendorBillNumber in
+// invoice-document-sequence.service.ts).
+model VendorBillDocumentSequence {
+  id         String @id @default(cuid())
+  branchId   String
+  branch     Branch @relation(fields: [branchId], references: [id])
+  yearMonth  String
+  lastNumber Int    @default(0)
+
+  @@unique([branchId, yearMonth])
+}
+
 model ChartOfAccount {
   id          String  @id @default(cuid())
   code        String  @unique
@@ -201,8 +218,15 @@ model Partner {
 
   // Stored (not computed on-demand), per decision — increased at invoice
   // posting time (see postInvoice in invoice.service.ts) and decreased at
-  // payment time in a future prompt.
+  // payment time in a future prompt. AR/customer-receivable only — a
+  // CUSTOMER-direction Invoice posting touches this field alone, never
+  // payableBalance below.
   outstandingBalance Decimal @default(0) @db.Decimal(18, 2)
+
+  // AP/vendor-payable — fully separate balance from outstandingBalance
+  // above. A VENDOR-direction Invoice (Vendor Bill) posting touches this
+  // field alone, never outstandingBalance.
+  payableBalance Decimal @default(0) @db.Decimal(18, 2)
 
   createdById Int?
   createdBy   User? @relation(fields: [createdById], references: [id])
@@ -241,13 +265,13 @@ model ProductService {
   // Account mapping — this is the core purpose of this model
   incomeAccountId String // required: which revenue account this hits when
   // invoiced/sold
-  incomeAccount ChartOfAccount @relation("ProductServiceIncomeAccount", fields: [incomeAccountId], references: [id])
+  incomeAccount   ChartOfAccount @relation("ProductServiceIncomeAccount", fields: [incomeAccountId], references: [id])
 
   expenseAccountId String? // optional: which expense/COGS account this hits
   // if there's a cost side (not every service will have one tracked this way
   // yet — e.g. guard service cost is really payroll, which isn't wired up
   // yet, so leave this nullable rather than forcing a placeholder mapping)
-  expenseAccount ChartOfAccount? @relation("ProductServiceExpenseAccount", fields: [expenseAccountId], references: [id])
+  expenseAccount   ChartOfAccount? @relation("ProductServiceExpenseAccount", fields: [expenseAccountId], references: [id])
 
   isActive Boolean @default(true)
 
@@ -263,30 +287,39 @@ model ProductService {
   @@index([isActive])
 }
 
-// Invoice header. Numbered Sector/Branch/YYYYMM/Seq (e.g. "GS/HO/202608/0001")
-// via InvoiceDocumentSequence — see that model for why it's a separate
-// sequence table from vouchers' DocumentSequence. Creation eagerly creates a
-// DRAFT JournalEntry (journalEntryId is required + @unique, i.e. a strict
-// 1:1), mirroring how vouchers already work — no schema gymnastics needed.
+// Invoice header — represents BOTH a Customer Invoice (direction: CUSTOMER)
+// and a Vendor Bill (direction: VENDOR). Customer Invoices are numbered
+// Sector/Branch/YYYYMM/Seq (e.g. "GS/HO/202608/0001") via
+// InvoiceDocumentSequence; Vendor Bills don't use sector at all and get
+// their own separate VB/Branch/YYYYMM/Seq numbering via
+// VendorBillDocumentSequence — see those models and
+// invoice-document-sequence.service.ts. Creation eagerly creates a DRAFT
+// JournalEntry (journalEntryId is required + @unique, i.e. a strict 1:1),
+// mirroring how vouchers already work — no schema gymnastics needed.
 // Tax is NOT modeled here: it attaches at the JournalEntry level via the
 // existing TaxApplication mechanism (same as vouchers), since
 // TaxApplication.journalEntryId already covers an invoice's entry.
 // Schema only for now — no service/API/UI layer yet.
 model Invoice {
-  id            String @id @default(cuid())
-  invoiceNumber String @unique // auto-generated, Sector/Branch/YYYYMM/Seq
+  id            String           @id @default(cuid())
+  invoiceNumber String           @unique // auto-generated — Sector/Branch/YYYYMM/Seq for
+  // CUSTOMER direction, VB/Branch/YYYYMM/Seq for VENDOR direction
+  direction     InvoiceDirection // CUSTOMER = Customer Invoice, VENDOR = Vendor Bill —
+  // required, no default: every row must explicitly say which it is
 
-  sector String // free text, e.g. "GS", "CC" — full sector list isn't known
+  sector String? // free text, e.g. "GS", "CC" — full sector list isn't known
   // yet, so this is intentionally not an enum (same precedent as
-  // TaxRate.category)
+  // TaxRate.category). Only meaningful for direction: CUSTOMER — Vendor
+  // Bills don't use sector at all, so this is null for direction: VENDOR.
 
   branchId String
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  partnerId String // must reference a CUSTOMER-type Partner — enforced in
-  // the service layer, not a DB constraint (Prisma can't check the enum
-  // value of a related row at the FK level)
-  partner Partner @relation(fields: [partnerId], references: [id])
+  partnerId String // direction: CUSTOMER must reference a CUSTOMER-type
+  // Partner, direction: VENDOR must reference a VENDOR-type Partner —
+  // enforced in the service layer, not a DB constraint (Prisma can't check
+  // the enum value of a related row at the FK level)
+  partner   Partner @relation(fields: [partnerId], references: [id])
 
   date    DateTime
   dueDate DateTime?
@@ -324,13 +357,13 @@ model InvoiceLine {
 
   productServiceId String? // nullable — allow a free-text line that isn't
   // tied to the catalog, in case Protection One needs an ad-hoc billing line
-  productService ProductService? @relation(fields: [productServiceId], references: [id])
+  productService   ProductService? @relation(fields: [productServiceId], references: [id])
 
   description String // required regardless — either copied from
   // ProductService or typed fresh
-  quantity  Decimal @default(1) @db.Decimal(10, 2)
-  unitPrice Decimal @db.Decimal(18, 2)
-  lineTotal Decimal @db.Decimal(18, 2)
+  quantity    Decimal @default(1) @db.Decimal(10, 2)
+  unitPrice   Decimal @db.Decimal(18, 2)
+  lineTotal   Decimal @db.Decimal(18, 2)
 
   sortOrder Int @default(0)
 
@@ -489,6 +522,11 @@ enum PartnerType {
 enum ProductServiceType {
   PRODUCT
   SERVICE
+}
+
+enum InvoiceDirection {
+  CUSTOMER // Customer Invoice — AR, updates Partner.outstandingBalance
+  VENDOR // Vendor Bill — AP, updates Partner.payableBalance
 }
 
 enum InvoiceStatus {

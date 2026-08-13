@@ -136,6 +136,7 @@ async function main() {
   console.log("--- Create invoice: 2 lines, 2 distinct income accounts ---");
   const invoice = await createInvoiceViaSchema({
     partnerId: customer.id,
+    direction: "CUSTOMER",
     sector,
     branchId: branch.id,
     date: new Date().toISOString(),
@@ -227,6 +228,7 @@ async function main() {
   console.log("\n--- Invoice number increments within the same sector/branch/month ---");
   const invoice2 = await createInvoiceViaSchema({
     partnerId: customer.id,
+    direction: "CUSTOMER",
     sector,
     branchId: branch.id,
     date: new Date().toISOString(),
@@ -250,6 +252,7 @@ async function main() {
   const otherSectorUpper = `${sectorUpper}X`;
   const invoice3 = await createInvoiceViaSchema({
     partnerId: customer.id,
+    direction: "CUSTOMER",
     sector: otherSectorUpper,
     branchId: branch.id,
     date: new Date().toISOString(),
@@ -270,6 +273,7 @@ async function main() {
   try {
     await createInvoiceViaSchema({
       partnerId: vendor.id,
+      direction: "CUSTOMER",
       sector,
       branchId: branch.id,
       date: new Date().toISOString(),
@@ -294,6 +298,7 @@ async function main() {
   try {
     await createInvoiceViaSchema({
       partnerId: customer.id,
+      direction: "CUSTOMER",
       sector,
       branchId: branch.id,
       date: new Date().toISOString(),

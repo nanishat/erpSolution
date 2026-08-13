@@ -440,3 +440,61 @@ route yet either, so `Invoice`/`JournalEntry` state is read directly via
 Prisma after each posting attempt. Requires
 `prisma/seed-tax-accounts.ts` to have been run first. Same no-cleanup
 convention as the other scripts, timestamp-derived sector naming.
+
+Every `createInvoiceViaSchema` call in this script and
+`phase3-invoice-manual-test.ts` now also passes `direction: "CUSTOMER"` —
+required after `Invoice.direction` was added (see
+`phase3-vendor-bill-manual-test.ts` below); no other change was needed to
+either script, which is itself the CUSTOMER-direction regression proof for
+that addition.
+
+### `phase3-vendor-bill-manual-test.ts`
+
+Covers Vendor Bills — `Invoice.direction: VENDOR`, added alongside the
+existing Customer Invoice path (`direction: CUSTOMER`) so one `Invoice`
+model represents both. A Vendor Bill: requires a `VENDOR`-type partner
+(`PartnerNotVendorError` otherwise), numbers via the new
+`generateVendorBillNumber` (`VB/{BranchCode}/{YYYYMM}/{Seq}` — no sector
+segment at all, per the locked decision that Vendor Bill numbering doesn't
+use sector; `Invoice.sector` is stored `null` for this direction), resolves
+each line's account via `ProductService.expenseAccountId` instead of
+`incomeAccountId` (rejected with the new `InvoiceLineMissingExpenseAccountError`
+if absent), and posts by crediting Accounts Payable (`2100`) and debiting the
+grouped expense accounts — the mirror image of a Customer Invoice's AR debit
+/ income credit shape.
+
+- Creating and posting a Vendor Bill: correct `VB/HO/YYYYMM/0001`-shaped
+  document number, `sector: null`, JournalEntry has exactly 1 AP credit +
+  1 expense debit line (both 15000, balanced), posting succeeds, and
+  `Partner.payableBalance` increases by exactly the bill's `grandTotal`
+  (15000)
+- **Isolation proof (the core of this prompt's locked decisions)**: before
+  posting the Vendor Bill, the vendor partner's `outstandingBalance` is
+  seeded with a nonzero noise value (555.25) via a direct Prisma write —
+  after posting, it's asserted **bit-for-bit unchanged** (still exactly
+  555.25), not just "not equal to 15000". Proves Vendor Bill posting never
+  touches `outstandingBalance`, not merely that it happened to stay at its
+  default of 0.
+- **Reverse isolation proof**: same technique in the other direction — a
+  customer partner's `payableBalance` is seeded with a different noise value
+  (888.5), a Customer Invoice is posted for them, `outstandingBalance`
+  increases correctly (+12000) and `payableBalance` is asserted bit-for-bit
+  unchanged (still exactly 888.5). Proves Customer Invoice posting never
+  touches `payableBalance`.
+- `direction: VENDOR` against a `CUSTOMER`-type partner is rejected with
+  `PartnerNotVendorError`
+- A `VENDOR`-direction line referencing a `ProductService` with no
+  `expenseAccountId` is rejected with `InvoiceLineMissingExpenseAccountError`
+- Confirms neither rejected attempt left a stray `Invoice` row behind (both
+  ran inside `createInvoice`'s own transaction)
+
+CUSTOMER-direction regression coverage is intentionally NOT duplicated here
+— it lives in `phase3-invoice-manual-test.ts` /
+`phase3-invoice-posting-manual-test.ts` (updated to pass the newly-required
+`direction` field, otherwise unchanged), which together prove the CUSTOMER
+path still behaves identically. Same deviations/conventions as the other
+Phase 3 invoice scripts: `createInvoice` called directly via the service (no
+API/UI layer yet), posting through the real `POST /api/invoices/[id]/post`
+endpoint, `Invoice`/`JournalEntry`/`Partner` state read directly via Prisma
+or `GET /api/partners/[id]` where no other route exists, no-cleanup,
+`TEST ... <timestamp>` naming.

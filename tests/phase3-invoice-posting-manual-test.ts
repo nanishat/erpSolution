@@ -158,6 +158,7 @@ async function main() {
 
   const invoice1 = await createInvoiceViaSchema({
     partnerId: customer.id,
+    direction: "CUSTOMER",
     sector,
     branchId: branch.id,
     date: new Date().toISOString(),
@@ -210,6 +211,7 @@ async function main() {
 
   const invoice2 = await createInvoiceViaSchema({
     partnerId: customer.id,
+    direction: "CUSTOMER",
     sector,
     branchId: branch.id,
     date: new Date().toISOString(),
@@ -335,6 +337,7 @@ async function main() {
 
   const invoice3 = await createInvoiceViaSchema({
     partnerId: customer.id,
+    direction: "CUSTOMER",
     sector,
     branchId: branch.id,
     date: new Date().toISOString(),
