@@ -392,3 +392,51 @@ lookups and the `CUSTOMER`/`VENDOR` partner fixtures go through the real API.
 Same no-cleanup convention as the other scripts; uses a timestamp-derived
 sector instead of `TEST ...` naming (sector is a short code, not a free-text
 name field) so re-runs don't collide.
+
+### `phase3-invoice-posting-manual-test.ts`
+
+Covers the Invoice posting service (`postInvoice` in `invoice.service.ts`)
+added on top of `createInvoice`: `POST /api/invoices/[id]/post`. Posting
+transitions the invoice's already-existing DRAFT `JournalEntry` to `POSTED`
+by calling the existing `postJournalEntry` (not reimplemented), recomputes
+`taxTotal`/`grandTotal` from every `APPROVED` `TaxApplication` on that
+`JournalEntry`, flips `Invoice.status` to `POSTED`, and increments
+`Partner.outstandingBalance` by the freshly computed `grandTotal` — all
+inside one transaction.
+
+- Posting a no-tax DRAFT invoice succeeds: the linked `JournalEntry` and the
+  `Invoice` row both end up `POSTED`, `taxTotal` stays `0` and `grandTotal`
+  stays `subtotal` (no regression), and `Partner.outstandingBalance`
+  increases by exactly `grandTotal`
+- Attaching a `PENDING_REVIEW` VAT (OUTPUT) `TaxApplication` to a DRAFT
+  invoice's `JournalEntry` and attempting to post is rejected with `409`
+  (`PendingTaxApprovalError`, propagated unchanged from `postJournalEntry`);
+  the `Invoice` and its `JournalEntry` both stay `DRAFT`, and
+  `Partner.outstandingBalance` is untouched — confirms the whole posting
+  attempt rolled back as one transaction
+- **Fix regression test** (previously a flagged bug, now fixed): approving
+  the tax application and posting again succeeds, `Invoice.taxTotal` picks
+  up the approved 3000 VAT and `grandTotal` is correctly 23000 (20000
+  subtotal + 3000 tax) instead of staying at 20000, and
+  `Partner.outstandingBalance` increases by the corrected 23000 — the
+  ledger side (VAT Payable line) is also verified directly
+- Two `APPROVED` `TaxApplication`s on one invoice's `JournalEntry` (two
+  different VAT rates, 15% and 5%, both against the same `JournalEntry`) sum
+  correctly into one `taxTotal` (1200 + 400 = 1600), and `grandTotal` /
+  `Partner.outstandingBalance` reflect the combined total (9600)
+- Re-posting an already-`POSTED` invoice is rejected with `409`
+  (`InvoiceAlreadyPostedError`)
+
+Uses VAT OUTPUT for its tax fixture (not TDS/VDS): `postApprovedTaxApplicationLines`
+requires a CASH/BANK/RECEIVABLE *debit* line to resolve VAT's settlement
+line, which an invoice's `JournalEntry` always has (the Accounts Receivable
+debit) — TDS/VDS instead require a CASH/BANK *credit* line, which an
+invoice's credit side (income accounts) never has. The `TaxRate` fixture is
+created directly via Prisma, same convention as
+`phase3-tax-posting-manual-test.ts`. Invoice creation is still direct via
+`createInvoice` (through `createInvoiceSchema`), same deviation as
+`phase3-invoice-manual-test.ts` — there is no `GET /api/invoices/[id]`
+route yet either, so `Invoice`/`JournalEntry` state is read directly via
+Prisma after each posting attempt. Requires
+`prisma/seed-tax-accounts.ts` to have been run first. Same no-cleanup
+convention as the other scripts, timestamp-derived sector naming.

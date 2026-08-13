@@ -199,6 +199,11 @@ model Partner {
 
   isActive Boolean @default(true)
 
+  // Stored (not computed on-demand), per decision — increased at invoice
+  // posting time (see postInvoice in invoice.service.ts) and decreased at
+  // payment time in a future prompt.
+  outstandingBalance Decimal @default(0) @db.Decimal(18, 2)
+
   createdById Int?
   createdBy   User? @relation(fields: [createdById], references: [id])
 

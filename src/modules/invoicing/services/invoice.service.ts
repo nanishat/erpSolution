@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import {
   BranchNotFoundError,
   createJournalEntry,
+  postJournalEntry,
 } from "@/modules/accounting/services/journal-entry.service";
 import type { JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
 import { generateInvoiceNumber } from "@/modules/invoicing/services/invoice-document-sequence.service";
@@ -62,6 +63,34 @@ export class UnbalancedInvoiceJournalEntryError extends Error {
         `(${totalDebit}) must equal total income credits (${totalCredit})`
     );
     this.name = "UnbalancedInvoiceJournalEntryError";
+  }
+}
+
+export class InvoiceNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Invoice ${id} not found`);
+    this.name = "InvoiceNotFoundError";
+  }
+}
+
+export class InvoiceAlreadyPostedError extends Error {
+  constructor(id: string, status: string) {
+    super(`Invoice ${id} is already ${status} and cannot be posted again`);
+    this.name = "InvoiceAlreadyPostedError";
+  }
+}
+
+export class InvoiceCancelledError extends Error {
+  constructor(id: string) {
+    super(`Invoice ${id} is cancelled and cannot be posted`);
+    this.name = "InvoiceCancelledError";
+  }
+}
+
+export class InvoiceVoidError extends Error {
+  constructor(id: string) {
+    super(`Invoice ${id} is void and cannot be posted`);
+    this.name = "InvoiceVoidError";
   }
 }
 
@@ -232,6 +261,76 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceW
           })),
         },
       },
+      include: invoiceInclude,
+    });
+  });
+}
+
+/**
+ * Transitions a DRAFT invoice to POSTED. Only DRAFT invoices can be posted —
+ * anything else (already POSTED/PARTIALLY_PAID/PAID, or CANCELLED/VOID) is
+ * rejected outright, so there is no path where a POSTED invoice's lines or
+ * header could still be reached through this function.
+ *
+ * Delegates all ledger-side validation to the existing postJournalEntry
+ * (balance check, active-account check, and — critically — the tax approval
+ * gate: PendingTaxApprovalError if any linked TaxApplication is still
+ * PENDING_REVIEW) rather than reimplementing any of it. Its rejection
+ * propagates unchanged and, since everything below runs inside one
+ * transaction, rolls back cleanly: the Invoice stays DRAFT and
+ * Partner.outstandingBalance is left untouched.
+ *
+ * taxTotal/grandTotal are (re)computed here, right before posting, from the
+ * sum of every APPROVED TaxApplication on the invoice's JournalEntry —
+ * deliberately at posting time rather than at tax-approval time:
+ * createTaxApplication only accepts a still-DRAFT JournalEntry
+ * (JournalEntryNotDraftError otherwise), and postJournalEntry above just
+ * flipped this one to POSTED, so no further TaxApplication can ever attach
+ * to it — every APPROVED one that will ever exist for this invoice is
+ * already final by this point. This also keeps tax-application.service.ts
+ * (shared by vouchers and invoices alike) unaware of the Invoice model
+ * entirely, rather than reaching into it from tax approval. An invoice
+ * posted with no approved tax simply sums to 0, leaving grandTotal ==
+ * subtotal — unchanged from today's behavior.
+ *
+ * On success, increments Partner.outstandingBalance by the freshly computed
+ * grandTotal (subtotal + taxTotal).
+ */
+export async function postInvoice(id: string): Promise<InvoiceWithLines> {
+  return db.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findUnique({ where: { id } });
+    if (!invoice) {
+      throw new InvoiceNotFoundError(id);
+    }
+    if (invoice.status === "CANCELLED") {
+      throw new InvoiceCancelledError(id);
+    }
+    if (invoice.status === "VOID") {
+      throw new InvoiceVoidError(id);
+    }
+    if (invoice.status !== "DRAFT") {
+      throw new InvoiceAlreadyPostedError(id, invoice.status);
+    }
+
+    await postJournalEntry(invoice.journalEntryId, tx);
+
+    const approvedTaxApplications = await tx.taxApplication.findMany({
+      where: { journalEntryId: invoice.journalEntryId, status: "APPROVED" },
+      select: { taxAmount: true },
+    });
+    const taxTotal = roundCurrency(
+      approvedTaxApplications.reduce((sum, application) => sum + Number(application.taxAmount), 0)
+    );
+    const grandTotal = roundCurrency(Number(invoice.subtotal) + taxTotal);
+
+    await tx.partner.update({
+      where: { id: invoice.partnerId },
+      data: { outstandingBalance: { increment: grandTotal } },
+    });
+
+    return tx.invoice.update({
+      where: { id },
+      data: { status: "POSTED", taxTotal, grandTotal },
       include: invoiceInclude,
     });
   });
