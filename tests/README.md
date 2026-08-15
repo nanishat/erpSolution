@@ -498,3 +498,66 @@ API/UI layer yet), posting through the real `POST /api/invoices/[id]/post`
 endpoint, `Invoice`/`JournalEntry`/`Partner` state read directly via Prisma
 or `GET /api/partners/[id]` where no other route exists, no-cleanup,
 `TEST ... <timestamp>` naming.
+
+### `product-service-manual-test.ts`
+
+Covers the admin CRUD service/API layer for `ProductService`
+(`product-service.service.ts`) — fills the gap flagged in
+`phase3-invoice-manual-test.ts` ("ProductService likewise has no API/UI yet"):
+`POST /api/product-services`, `GET /api/product-services`, `GET
+/api/product-services/[id]`, `PATCH /api/product-services/[id]`, `DELETE
+/api/product-services/[id]` (soft delete via `isActive`, same as
+`Partner`/`TaxRate` — never hard-delete).
+
+- Creating a `PRODUCT` and a `SERVICE` both succeed; a `SERVICE` created
+  without `expenseAccountId` stores it as `null` rather than requiring one
+- Creating with a duplicate `code` is rejected with `409`
+- Creating with a nonexistent `incomeAccountId` is rejected with `400`
+  (`IncomeAccountNotFoundError`)
+- Creating with a nonexistent `expenseAccountId`, when provided, is rejected
+  with `400` (`ExpenseAccountNotFoundError`) — both account checks require
+  the referenced `ChartOfAccount` to be `isActive: true`, not merely exist
+- Deactivating excludes the row from the default `GET /api/product-services`
+  list but it's still fetchable by id, and reappears when `?isActive=false`
+  is passed explicitly; a still-active fixture stays in the default list
+  throughout, confirming deactivation doesn't affect unrelated rows
+
+Income/expense account fixtures are created through the existing `POST
+/api/accounts` route (same convention as `phase3-invoice-manual-test.ts`'s
+`ChartOfAccount` fixtures) rather than direct Prisma writes. Same no-cleanup
+convention and `TEST ... <timestamp>` naming as the other scripts.
+
+### `product-service-ui-manual-test.ts`
+
+Covers the `ProductService` list/create/edit pages built on top of the CRUD
+API above (`/accounting/product-services`,
+`/accounting/product-services/new`, `/accounting/product-services/[id]/edit`
+— nested under `/accounting`, same placement as Partners/Tax Rates). Unlike
+`TaxRate`'s admin UI (create-only when it first shipped), the edit page is
+included from the start, since Invoice creation needs to correct catalog
+entries regularly.
+
+Same convention as `phase2-partner-ui-manual-test.ts`: no headless-browser/
+JSDOM runner is wired up, so this fetches server-rendered HTML and asserts
+on markup. `ProductServiceTable` is a client component that receives the
+full, unfiltered list as a prop — same RSC-hydration-payload footgun as
+`TaxApplicationTable` (see `tax-approval-queue-ui-manual-test.ts`) — so the
+"appears in list" check uses an `appearsRendered` helper (`html.includes(">value<")`)
+against the rendered anchor/cell text, not a plain substring search.
+
+- `/accounting/product-services` responds `200` and renders the heading and
+  a "New product/service" link
+- `/accounting/product-services/new` renders inputs for every field: `code`,
+  `name`, `type`, `unitPrice`, `unit`, `incomeAccountId`, `expenseAccountId`
+- Creating a row via `POST /api/product-services` (the same endpoint the
+  form's submit handler calls) makes its code show up rendered on the next
+  fetch of `/accounting/product-services`
+- `/accounting/product-services/[id]/edit` renders the row's current code in
+  the page subtitle. (Doesn't assert on a static `value="..."` attribute on
+  the form inputs — `react-hook-form`'s `register()` binds `defaultValues`
+  via ref on the client, not a static HTML `value` attribute, so SSR never
+  renders one; same reason `phase2-partner-ui-manual-test.ts`'s edit-form
+  check is limited to the page subtitle, not input values.)
+
+Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
+scripts.
