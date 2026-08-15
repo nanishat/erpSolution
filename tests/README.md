@@ -561,3 +561,55 @@ against the rendered anchor/cell text, not a plain substring search.
 
 Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
 scripts.
+
+### `payment-manual-test.ts`
+
+Covers the minimal single-invoice payment service (`payment.service.ts`) —
+just enough to move an `Invoice` from `POSTED` to `PARTIALLY_PAID`/`PAID`.
+Deliberately **not** full payment reconciliation: multi-invoice allocation,
+bank statement matching, and anything beyond "record a payment against one
+invoice" stay deferred to Phase 4 (Payments & Reconciliation). Exercises the
+real `POST /api/invoices/[id]/payments` endpoint; `Invoice`/`Payment` state
+after each call is read directly via Prisma (no `GET /api/invoices/[id]`
+route exists yet — same deviation as the other Phase 3 invoice scripts).
+
+`recordPayment` is atomic, not create-then-post like Invoice: `Payment` has
+no `status`/draft concept of its own, so its `JournalEntry` is created and
+posted back-to-back inside one transaction (still via the existing
+`createJournalEntry`/`postJournalEntry` building blocks, not reimplemented).
+Line shape mirrors `postInvoice`'s direction-aware AR/AP logic in reverse:
+`direction: CUSTOMER` debits the given Cash/Bank account and credits
+Accounts Receivable (`1200`); `direction: VENDOR` debits Accounts Payable
+(`2100`) and credits the given Cash/Bank account. New `VoucherType.PAYMENT_VOUCHER`
+(short code `PV`) is stamped on the payment's `JournalEntry`, same treatment
+as `INVOICE_VOUCHER` — not user-selectable in the voucher-type picker.
+
+- Full payment on a `CUSTOMER` invoice: status -> `PAID`, `amountPaid` ==
+  `grandTotal`, `outstandingBalance` decreases by exactly the payment
+  amount; **isolation proof** — `payableBalance` is seeded with a nonzero
+  noise value first and asserted bit-for-bit unchanged afterward, same rigor
+  as `phase3-vendor-bill-manual-test.ts`
+- Partial payment: status -> `PARTIALLY_PAID`, `amountPaid` correct
+- A second partial payment summing to the full amount transitions the same
+  invoice to `PAID`
+- Overpayment (amount exceeding the remaining balance) is rejected with
+  `409` (`PaymentExceedsRemainingBalanceError`) rather than silently
+  producing a negative remaining balance — confirmed the rejected attempt
+  left the invoice completely untouched (still `POSTED`, `amountPaid` still
+  `0`)
+- Same full/partial flow for a `VENDOR` bill: `payableBalance` updates
+  correctly across two payments; isolation proof in the other direction —
+  `outstandingBalance` seeded with a different noise value, asserted
+  bit-for-bit unchanged
+- Payment against a `DRAFT` invoice is rejected with `409`
+  (`InvoiceNotPayableError`)
+- Payment against an already-`PAID` invoice is rejected with `409`
+  (reuses the fully-paid fixture from the first scenario)
+
+Income/expense account and Cash account fixtures are read through the
+existing `GET /api/accounts` route (`1010` Cash, `4010` Sales Revenue,
+`5010` Operating Expense — from `prisma/seed-coa.ts`); invoice creation goes
+through `createInvoice` directly (no API/UI layer yet, same deviation as the
+other Phase 3 invoice scripts) and posting through the real
+`POST /api/invoices/[id]/post`. Same no-cleanup convention and
+`TEST ... <timestamp>` naming as the other scripts.

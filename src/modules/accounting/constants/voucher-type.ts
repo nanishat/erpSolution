@@ -7,6 +7,7 @@ export const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {
   CASH_VOUCHER: "Cash Voucher",
   // Not user-selectable — see USER_CREATABLE_VOUCHER_TYPES below.
   INVOICE_VOUCHER: "Invoice Voucher",
+  PAYMENT_VOUCHER: "Payment Voucher",
 };
 
 export const VOUCHER_TYPE_DESCRIPTIONS: Record<VoucherType, string> = {
@@ -15,12 +16,14 @@ export const VOUCHER_TYPE_DESCRIPTIONS: Record<VoucherType, string> = {
   CREDIT_VOUCHER: "Recording a receipt or income received into cash/bank.",
   JOURNAL_VOUCHER: "A full multi-line entry for anything that doesn't fit the simplified vouchers.",
   INVOICE_VOUCHER: "Auto-generated when an invoice is created — not directly selectable.",
+  PAYMENT_VOUCHER: "Auto-generated when a payment is recorded against an invoice — not directly selectable.",
 };
 
 // The voucher-type picker/form dropdowns only offer types a user can
-// manually create through them. INVOICE_VOUCHER is stamped automatically by
-// Invoice creation (see invoice.service.ts) and has no corresponding manual
-// form, so it's excluded here rather than appearing as a dead-end option.
+// manually create through them. INVOICE_VOUCHER/PAYMENT_VOUCHER are stamped
+// automatically by Invoice creation/payment recording (see
+// invoice.service.ts / payment.service.ts) and have no corresponding manual
+// form, so they're excluded here rather than appearing as dead-end options.
 export const USER_CREATABLE_VOUCHER_TYPES: VoucherType[] = [
   "CASH_VOUCHER",
   "DEBIT_VOUCHER",

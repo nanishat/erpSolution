@@ -18,6 +18,7 @@ model User {
   taxApplications TaxApplication[]
   productServices ProductService[]
   invoices        Invoice[]
+  payments        Payment[]
 }
 
 model Branch {
@@ -67,6 +68,10 @@ model JournalEntry {
   // The FK lives on Invoice (journalEntryId is @unique there), so this is a
   // pure back-relation with no fields/references of its own.
   invoice Invoice?
+
+  // Same pattern as `invoice` above: the FK lives on Payment
+  // (journalEntryId is @unique there), so this is a pure back-relation.
+  payment Payment?
 
   @@index([date])
   @@index([branchId])
@@ -218,14 +223,14 @@ model Partner {
 
   // Stored (not computed on-demand), per decision — increased at invoice
   // posting time (see postInvoice in invoice.service.ts) and decreased at
-  // payment time in a future prompt. AR/customer-receivable only — a
-  // CUSTOMER-direction Invoice posting touches this field alone, never
-  // payableBalance below.
+  // payment time (see recordPayment in payment.service.ts). AR/customer-
+  // receivable only — a CUSTOMER-direction Invoice posting or payment
+  // touches this field alone, never payableBalance below.
   outstandingBalance Decimal @default(0) @db.Decimal(18, 2)
 
   // AP/vendor-payable — fully separate balance from outstandingBalance
-  // above. A VENDOR-direction Invoice (Vendor Bill) posting touches this
-  // field alone, never outstandingBalance.
+  // above. A VENDOR-direction Invoice (Vendor Bill) posting or payment
+  // touches this field alone, never outstandingBalance.
   payableBalance Decimal @default(0) @db.Decimal(18, 2)
 
   createdById Int?
@@ -237,7 +242,9 @@ model Partner {
   taxApplications TaxApplication[]
   invoices        Invoice[]
 
-  // Payment relations attach here in Phase 4
+  // Full reconciliation (multi-invoice allocation, bank statement matching)
+  // still deferred to Phase 4 — this is just the back-relation for the
+  // minimal single-invoice Payment model added ahead of that.
 
   @@index([type])
   @@index([tin])
@@ -338,7 +345,8 @@ model Invoice {
 
   notes String?
 
-  lines InvoiceLine[]
+  lines    InvoiceLine[]
+  payments Payment[]
 
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id])
@@ -366,6 +374,35 @@ model InvoiceLine {
   lineTotal   Decimal @db.Decimal(18, 2)
 
   sortOrder Int @default(0)
+
+  @@index([invoiceId])
+}
+
+// Minimal single-invoice payment recording — deliberately NOT full payment
+// reconciliation (multi-invoice allocation, bank statement matching, etc.
+// stay deferred to Phase 4, Payments & Reconciliation). Just enough to move
+// an Invoice from POSTED to PARTIALLY_PAID/PAID (see recordPayment in
+// payment.service.ts). One row per payment; an invoice can have several.
+model Payment {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+
+  amount    Decimal  @db.Decimal(18, 2)
+  date      DateTime
+  method    String? // free text for now — "Cash", "Bank Transfer", "Cheque",
+  // etc. Not an enum, since Phase 4 may need to formalize this alongside
+  // real reconciliation; keep it simple now.
+  reference String? // e.g. cheque number, transaction ref
+
+  // Eagerly created, mirrors the Invoice/JournalEntry pattern — required,
+  // not nullable, and 1:1 (a payment has exactly one JournalEntry)
+  journalEntryId String       @unique
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
+
+  createdById Int?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
 
   @@index([invoiceId])
 }
@@ -512,6 +549,10 @@ enum VoucherType {
   // JournalEntry.documentNumber is required + unique regardless of origin,
   // and generateDocumentNumber's short-code lookup needs one.
   INVOICE_VOUCHER
+  // Same rationale as INVOICE_VOUCHER above, stamped on the JournalEntry
+  // that Payment recording eagerly creates (see Payment model /
+  // recordPayment in payment.service.ts) — not user-selectable either.
+  PAYMENT_VOUCHER
 }
 
 enum PartnerType {
