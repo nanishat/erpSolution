@@ -5,7 +5,10 @@ import {
   BranchNotFoundError,
   createJournalEntry,
   postJournalEntry,
+  reverseJournalEntry,
+  voidDraftJournalEntry,
 } from "@/modules/accounting/services/journal-entry.service";
+import type { JournalEntryWithLines } from "@/modules/accounting/services/journal-entry.service";
 import type { JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
 import {
   generateInvoiceNumber,
@@ -131,6 +134,63 @@ export class InvoiceVoidError extends Error {
   constructor(id: string) {
     super(`Invoice ${id} is void and cannot be posted`);
     this.name = "InvoiceVoidError";
+  }
+}
+
+export class InvoiceNotCancellableError extends Error {
+  constructor(id: string, status: string) {
+    super(`Invoice ${id} is ${status} and cannot be cancelled — only a DRAFT invoice can be cancelled`);
+    this.name = "InvoiceNotCancellableError";
+  }
+}
+
+export class InvoiceNotReversibleError extends Error {
+  constructor(id: string, status: string) {
+    super(
+      `Invoice ${id} is ${status} and cannot be reversed — only a POSTED or PARTIALLY_PAID ` +
+        "invoice can be reversed"
+    );
+    this.name = "InvoiceNotReversibleError";
+  }
+}
+
+// A PAID invoice's balance was already settled by one or more real cash
+// movements (Payment rows, each with its own POSTED JournalEntry). Reversing
+// the invoice's own JournalEntry would zero out the AR/AP side while those
+// payment postings stay untouched and pointing at a now-VOID invoice — the
+// ledger would show cash received/paid against nothing. Undoing a paid
+// invoice is a distinct real-world event (a credit note / refund, crediting
+// the customer or reclaiming from the vendor) that doesn't exist in this
+// schema yet, not a plain reversal — so this is rejected outright rather
+// than silently allowed or silently folded into the generic payments check
+// below (see InvoiceHasPaymentsError, which would also catch this same case
+// since a PAID invoice always has payments, but this gives a clearer,
+// PAID-specific message about why).
+export class InvoicePaidCannotReverseError extends Error {
+  constructor(id: string) {
+    super(
+      `Invoice ${id} is fully PAID and cannot be reversed — reversing a paid invoice's journal ` +
+        "entry would leave its payment(s) posted against nothing; this requires a credit note / " +
+        "refund process, which does not exist yet"
+    );
+    this.name = "InvoicePaidCannotReverseError";
+  }
+}
+
+// Shared by both cancelInvoice (defensive — a DRAFT invoice should never
+// have payments, since recordPayment only accepts POSTED/PARTIALLY_PAID)
+// and reverseInvoice (a real constraint — reversing an invoice with any
+// payment recorded would corrupt the ledger the same way reversing a PAID
+// one would, see InvoicePaidCannotReverseError; note this also means a
+// PARTIALLY_PAID invoice can never actually pass this check, since having
+// any payment at all is exactly what makes it PARTIALLY_PAID).
+export class InvoiceHasPaymentsError extends Error {
+  constructor(id: string, paymentCount: number) {
+    super(
+      `Invoice ${id} has ${paymentCount} payment(s) recorded against it and cannot be ` +
+        "cancelled/reversed this way"
+    );
+    this.name = "InvoiceHasPaymentsError";
   }
 }
 
@@ -450,5 +510,157 @@ export async function postInvoice(id: string): Promise<InvoiceWithLines> {
       data: { status: "POSTED", taxTotal, grandTotal },
       include: invoiceInclude,
     });
+  });
+}
+
+export type CancelInvoiceResult = {
+  invoice: InvoiceWithLines;
+  journalEntry: JournalEntryWithLines;
+};
+
+export type ReverseInvoiceResult = {
+  invoice: InvoiceWithLines;
+  journalEntry: { original: JournalEntryWithLines; reversal: JournalEntryWithLines };
+};
+
+/**
+ * Cancels a DRAFT invoice (Customer Invoice or Vendor Bill) that was never
+ * posted — the "I created this by mistake / changed my mind before it ever
+ * touched the ledger" path, distinct from reverseInvoice below (see that
+ * function's doc comment for why these are not the same operation).
+ *
+ * Direction-agnostic on purpose: nothing here branches on
+ * invoice.direction, because a DRAFT invoice never posted means neither
+ * outstandingBalance nor payableBalance was ever touched (postInvoice is
+ * the only place either field is incremented) — there is nothing to undo on
+ * the Partner, for either direction alike.
+ *
+ * The linked JournalEntry was eagerly created alongside the invoice (same
+ * as every voucher) but, being DRAFT, never took effect on the ledger
+ * (getTrialBalance excludes DRAFT rows). JournalEntryStatus today only
+ * offers DRAFT/POSTED/VOID — there's no distinct "cancelled, never posted"
+ * state — so rather than leaving it an orphaned DRAFT row (which would keep
+ * showing up on the general journal entries list with a live, clickable
+ * "Post" button that has nothing to do with this now-cancelled invoice),
+ * this reuses voidDraftJournalEntry to flip it straight to VOID: the same
+ * terminal "dead, no ledger effect" status reverseJournalEntry already uses
+ * for entries that were reversed after posting. See voidDraftJournalEntry's
+ * own doc comment for why that (and not reverseJournalEntry, which requires
+ * an already-POSTED entry) is the right call here.
+ *
+ * Rejects anything that isn't DRAFT — including an already-CANCELLED or
+ * VOID invoice, so this can't be called twice. Also defensively verifies
+ * zero Payment rows exist: recordPayment only accepts a POSTED/
+ * PARTIALLY_PAID invoice, so a DRAFT invoice should never have one, but this
+ * is cheap insurance against that invariant ever being violated (e.g. by a
+ * future code path) rather than trusting it silently.
+ */
+export async function cancelInvoice(id: string): Promise<CancelInvoiceResult> {
+  return db.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findUnique({ where: { id } });
+    if (!invoice) {
+      throw new InvoiceNotFoundError(id);
+    }
+    if (invoice.status !== "DRAFT") {
+      throw new InvoiceNotCancellableError(id, invoice.status);
+    }
+
+    const paymentCount = await tx.payment.count({ where: { invoiceId: id } });
+    if (paymentCount > 0) {
+      throw new InvoiceHasPaymentsError(id, paymentCount);
+    }
+
+    const journalEntry = await voidDraftJournalEntry(invoice.journalEntryId, tx);
+
+    const updatedInvoice = await tx.invoice.update({
+      where: { id },
+      data: { status: "CANCELLED" },
+      include: invoiceInclude,
+    });
+
+    return { invoice: updatedInvoice, journalEntry };
+  });
+}
+
+/**
+ * Reverses an already-POSTED invoice (Customer Invoice or Vendor Bill) —
+ * the "this was posted to the ledger and needs to be undone" path, distinct
+ * from cancelInvoice above: that function only ever touches a DRAFT invoice
+ * whose JournalEntry never took effect, while this one undoes a real,
+ * already-POSTED ledger effect (and the Partner balance change that came
+ * with it) via the existing reverseJournalEntry — reused, not reimplemented,
+ * same as postInvoice reuses postJournalEntry.
+ *
+ * Only valid on POSTED or PARTIALLY_PAID (anything else — DRAFT, CANCELLED,
+ * VOID — is rejected as InvoiceNotReversibleError; DRAFT in particular
+ * should go through cancelInvoice instead). PAID is rejected outright with
+ * a dedicated, clearer error — see InvoicePaidCannotReverseError's doc
+ * comment for why a paid invoice needs a credit note / refund process
+ * instead of a plain reversal, a process this schema doesn't have yet.
+ *
+ * Additionally — and this is the stricter, actually load-bearing check —
+ * rejects if the invoice has ANY Payment rows at all (InvoiceHasPaymentsError).
+ * In practice this means only a POSTED invoice with zero payments can ever
+ * reverse cleanly: a PARTIALLY_PAID invoice always has at least one payment
+ * by definition, so it always fails this check too, even though its status
+ * alone would otherwise be considered reversible above. This is intentional
+ * defense in depth (status and payment count are two independent signals of
+ * the same underlying fact) rather than redundant — reversing an invoice out
+ * from under a real payment would leave that payment's own JournalEntry
+ * posted against a now-VOID invoice with no corresponding adjustment.
+ *
+ * On success: reverses the linked JournalEntry (creating a new offsetting
+ * entry, exactly as reverseJournalEntry already does for vouchers), sets
+ * Invoice.status to VOID — matching how JournalEntry reversal already uses
+ * VOID as the terminal "this was reversed" status — and decrements exactly
+ * ONE Partner balance field by grandTotal, undoing what postInvoice
+ * incremented: direction: CUSTOMER touches ONLY outstandingBalance,
+ * direction: VENDOR touches ONLY payableBalance, via the same explicit
+ * if/else isolation used by postInvoice/recordPayment (never both, never a
+ * dynamic key).
+ */
+export async function reverseInvoice(
+  id: string,
+  reason?: string
+): Promise<ReverseInvoiceResult> {
+  return db.$transaction(async (tx) => {
+    const invoice = await tx.invoice.findUnique({ where: { id } });
+    if (!invoice) {
+      throw new InvoiceNotFoundError(id);
+    }
+    if (invoice.status === "PAID") {
+      throw new InvoicePaidCannotReverseError(id);
+    }
+    if (invoice.status !== "POSTED" && invoice.status !== "PARTIALLY_PAID") {
+      throw new InvoiceNotReversibleError(id, invoice.status);
+    }
+
+    const paymentCount = await tx.payment.count({ where: { invoiceId: id } });
+    if (paymentCount > 0) {
+      throw new InvoiceHasPaymentsError(id, paymentCount);
+    }
+
+    const { original, reversal } = await reverseJournalEntry(invoice.journalEntryId, reason, tx);
+
+    const grandTotal = Number(invoice.grandTotal);
+    if (invoice.direction === "CUSTOMER") {
+      await tx.partner.update({
+        where: { id: invoice.partnerId },
+        data: { outstandingBalance: { decrement: grandTotal } },
+      });
+    } else {
+      await tx.partner.update({
+        where: { id: invoice.partnerId },
+        data: { payableBalance: { decrement: grandTotal } },
+      });
+    }
+
+    const updatedInvoice = await tx.invoice.update({
+      where: { id },
+      data: { status: "VOID" },
+      include: invoiceInclude,
+    });
+
+    return { invoice: updatedInvoice, journalEntry: { original, reversal } };
   });
 }

@@ -80,6 +80,16 @@ export class CannotReverseAReversalError extends Error {
   }
 }
 
+export class JournalEntryNotDraftForVoidError extends Error {
+  constructor(id: string, status: string) {
+    super(
+      `Journal entry ${id} is ${status}, not DRAFT — only a still-DRAFT entry can be voided ` +
+        "this way; a POSTED entry must go through reverseJournalEntry instead"
+    );
+    this.name = "JournalEntryNotDraftForVoidError";
+  }
+}
+
 export class PendingTaxApprovalError extends Error {
   constructor(id: string) {
     super(
@@ -383,6 +393,53 @@ export async function reverseJournalEntry(
   return db.$transaction((transaction) =>
     reverseJournalEntryWithClient(transaction, entryId, reason)
   );
+}
+
+async function voidDraftJournalEntryWithClient(
+  tx: Prisma.TransactionClient,
+  entryId: string
+): Promise<JournalEntryWithLines> {
+  const entry = await tx.journalEntry.findUnique({ where: { id: entryId } });
+  if (!entry) {
+    throw new JournalEntryNotFoundError(entryId);
+  }
+  if (entry.status !== "DRAFT") {
+    throw new JournalEntryNotDraftForVoidError(entryId, entry.status);
+  }
+
+  const voided = await tx.journalEntry.update({
+    where: { id: entryId },
+    data: { status: "VOID" },
+    include: journalEntryInclude,
+  });
+  return serializeJournalEntry(voided);
+}
+
+/**
+ * Marks a still-DRAFT JournalEntry as VOID without ever posting it — for
+ * when whatever eagerly created this entry (an Invoice, a voucher) is
+ * cancelled before posting. Deliberately NOT reverseJournalEntry: that
+ * function only accepts an already-POSTED entry and creates a whole second
+ * offsetting entry to undo real ledger effects. A DRAFT entry was never
+ * posted and never touched the ledger (getTrialBalance excludes DRAFT rows
+ * entirely), so there is nothing to reverse — this just flips status
+ * straight to VOID, reusing the same terminal "dead, no ledger effect"
+ * status reverseJournalEntry already uses for reversed entries, rather than
+ * leaving the row an orphaned, seemingly-still-editable DRAFT that would
+ * keep showing up on the journal entries list with a live "Post" button.
+ * Only valid on a DRAFT entry; rejects otherwise (a POSTED entry must go
+ * through reverseJournalEntry instead, and an already-VOID one has nothing
+ * left to do). Pass `tx` to run as part of an already-open transaction;
+ * otherwise a new one is opened.
+ */
+export async function voidDraftJournalEntry(
+  entryId: string,
+  tx?: Prisma.TransactionClient
+): Promise<JournalEntryWithLines> {
+  if (tx) {
+    return voidDraftJournalEntryWithClient(tx, entryId);
+  }
+  return db.$transaction((transaction) => voidDraftJournalEntryWithClient(transaction, entryId));
 }
 
 async function postJournalEntryWithClient(

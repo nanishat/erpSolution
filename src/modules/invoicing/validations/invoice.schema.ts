@@ -61,5 +61,12 @@ export const createInvoiceSchema = z.discriminatedUnion("direction", [
   vendorBillSchema,
 ]);
 
+// Mirrors reverseJournalEntrySchema (journal-entry.schema.ts) — same
+// optional, non-empty-when-present `reason` shape.
+export const reverseInvoiceSchema = z.object({
+  reason: z.string().trim().min(1).optional(),
+});
+
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
+export type ReverseInvoiceInput = z.infer<typeof reverseInvoiceSchema>;
