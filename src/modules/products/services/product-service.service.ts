@@ -12,9 +12,21 @@ const productServiceWithAccountsInclude = {
   expenseAccount: { select: { id: true, code: true, name: true } },
 } satisfies Prisma.ProductServiceInclude;
 
-export type ProductServiceWithAccounts = Prisma.ProductServiceGetPayload<{
+type ProductServiceRow = Prisma.ProductServiceGetPayload<{
   include: typeof productServiceWithAccountsInclude;
 }>;
+
+// unitPrice is a Prisma Decimal, which React Server Components can't pass to
+// "use client" components ("Decimal objects are not supported") — convert to
+// a plain number before it ever reaches a page/component, mirroring how
+// getTrialBalance() converts its Decimal sums to number at the service layer.
+export type ProductServiceWithAccounts = Omit<ProductServiceRow, "unitPrice"> & {
+  unitPrice: number;
+};
+
+function serializeProductService(productService: ProductServiceRow): ProductServiceWithAccounts {
+  return { ...productService, unitPrice: Number(productService.unitPrice) };
+}
 
 export class ProductServiceNotFoundError extends Error {
   constructor(id: string) {
@@ -60,11 +72,13 @@ export async function listProductServices(
     ];
   }
 
-  return db.productService.findMany({
+  const productServices = await db.productService.findMany({
     where,
     include: productServiceWithAccountsInclude,
     orderBy: { code: "asc" },
   });
+
+  return productServices.map(serializeProductService);
 }
 
 export async function getProductServiceById(id: string): Promise<ProductServiceWithAccounts> {
@@ -77,7 +91,7 @@ export async function getProductServiceById(id: string): Promise<ProductServiceW
     throw new ProductServiceNotFoundError(id);
   }
 
-  return productService;
+  return serializeProductService(productService);
 }
 
 async function assertActiveAccountExists(
@@ -109,7 +123,7 @@ export async function createProductService(
     }
 
     try {
-      return await tx.productService.create({
+      const created = await tx.productService.create({
         data: {
           code: input.code,
           name: input.name,
@@ -124,6 +138,7 @@ export async function createProductService(
         },
         include: productServiceWithAccountsInclude,
       });
+      return serializeProductService(created);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new DuplicateProductServiceCodeError(input.code);
@@ -158,7 +173,7 @@ export async function updateProductService(
     }
 
     try {
-      return await tx.productService.update({
+      const updated = await tx.productService.update({
         where: { id },
         data: {
           code: input.code,
@@ -173,6 +188,7 @@ export async function updateProductService(
         },
         include: productServiceWithAccountsInclude,
       });
+      return serializeProductService(updated);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new DuplicateProductServiceCodeError(input.code ?? existing.code);
@@ -188,9 +204,10 @@ export async function deactivateProductService(id: string): Promise<ProductServi
     throw new ProductServiceNotFoundError(id);
   }
 
-  return db.productService.update({
+  const deactivated = await db.productService.update({
     where: { id },
     data: { isActive: false },
     include: productServiceWithAccountsInclude,
   });
+  return serializeProductService(deactivated);
 }

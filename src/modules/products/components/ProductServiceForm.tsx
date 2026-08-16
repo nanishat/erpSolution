@@ -49,7 +49,7 @@ export function ProductServiceForm({
       name: productService?.name ?? "",
       description: productService?.description ?? "",
       type: productService?.type ?? "",
-      unitPrice: productService?.unitPrice?.toString() ?? "0",
+      unitPrice: productService?.unitPrice?.toFixed(2) ?? "0",
       unit: productService?.unit ?? "",
       incomeAccountId: productService?.incomeAccountId ?? "",
       expenseAccountId: productService?.expenseAccountId ?? "",

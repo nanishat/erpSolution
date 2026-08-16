@@ -153,7 +153,7 @@ export function ProductServiceTable({
                       {productService.type}
                     </span>
                   </td>
-                  <td className="px-3 py-2">{productService.unitPrice.toString()}</td>
+                  <td className="px-3 py-2">{productService.unitPrice.toFixed(2)}</td>
                   <td className="px-3 py-2">{productService.unit ?? "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {productService.incomeAccount.code} — {productService.incomeAccount.name}
