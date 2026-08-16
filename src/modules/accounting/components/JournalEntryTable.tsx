@@ -30,14 +30,8 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
         </thead>
         <tbody>
           {entries.map((entry) => {
-            const totalDebit = entry.lines.reduce(
-              (sum, line) => sum + Number(line.debit),
-              0
-            );
-            const totalCredit = entry.lines.reduce(
-              (sum, line) => sum + Number(line.credit),
-              0
-            );
+            const totalDebit = entry.lines.reduce((sum, line) => sum + line.debit, 0);
+            const totalCredit = entry.lines.reduce((sum, line) => sum + line.credit, 0);
             const isPending = pendingId === entry.id;
 
             return (

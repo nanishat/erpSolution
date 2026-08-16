@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import type { Partner, TaxRate } from "@prisma/client";
 import { TaxComputationType, TaxDirection, TaxType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import type { Partner } from "@/modules/partners/services/partner.service";
+import type { TaxRate } from "@/modules/tax/services/tax-rate.service";
 import { createTaxApplicationSchema } from "@/modules/tax/validations/tax-application.schema";
 
 type AddTaxApplicationFormValues = {
@@ -240,7 +241,7 @@ export function AddTaxApplicationForm({
               </option>
               {ratesForDirection.map((rate) => (
                 <option key={rate.id} value={rate.id}>
-                  {rate.name} — {Number(rate.ratePercent).toFixed(2)}%
+                  {rate.name} — {rate.ratePercent.toFixed(2)}%
                 </option>
               ))}
             </select>

@@ -10,9 +10,31 @@ const taxApplicationListInclude = {
   partner: { select: { id: true, name: true } },
 } satisfies Prisma.TaxApplicationInclude;
 
-export type TaxApplicationListItem = Prisma.TaxApplicationGetPayload<{
+type TaxApplicationListRow = Prisma.TaxApplicationGetPayload<{
   include: typeof taxApplicationListInclude;
 }>;
+
+// ratePercent/baseAmount/taxAmount are Prisma Decimals, which React Server
+// Components can't pass to "use client" components ("Decimal objects are
+// not supported") — convert to plain numbers before this ever reaches
+// TaxApplicationTable, mirroring serializeProductService().
+export type TaxApplicationListItem = Omit<
+  TaxApplicationListRow,
+  "ratePercent" | "baseAmount" | "taxAmount"
+> & {
+  ratePercent: number;
+  baseAmount: number;
+  taxAmount: number;
+};
+
+function serializeTaxApplication(app: TaxApplicationListRow): TaxApplicationListItem {
+  return {
+    ...app,
+    ratePercent: Number(app.ratePercent),
+    baseAmount: Number(app.baseAmount),
+    taxAmount: Number(app.taxAmount),
+  };
+}
 
 export class TaxRateNotFoundError extends Error {
   constructor(id: string) {
@@ -95,10 +117,11 @@ function calculateTaxAmount(
 // Newest first — the approval queue cares most about what just landed,
 // not chronological history.
 export async function listTaxApplications(): Promise<TaxApplicationListItem[]> {
-  return db.taxApplication.findMany({
+  const applications = await db.taxApplication.findMany({
     include: taxApplicationListInclude,
     orderBy: { createdAt: "desc" },
   });
+  return applications.map(serializeTaxApplication);
 }
 
 /**

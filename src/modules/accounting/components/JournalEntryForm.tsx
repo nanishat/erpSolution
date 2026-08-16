@@ -76,8 +76,8 @@ export function JournalEntryForm({
           lines: entry.lines.map((line) => ({
             accountId: line.accountId,
             branchId: line.branchId,
-            debit: Number(line.debit),
-            credit: Number(line.credit),
+            debit: line.debit,
+            credit: line.credit,
             memo: line.memo ?? "",
           })),
         }

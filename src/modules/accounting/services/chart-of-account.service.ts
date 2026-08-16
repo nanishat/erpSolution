@@ -40,9 +40,33 @@ const chartOfAccountWithChildrenInclude = {
   children: true,
 } satisfies Prisma.ChartOfAccountInclude;
 
-export type ChartOfAccountWithChildren = Prisma.ChartOfAccountGetPayload<{
+type ChartOfAccountRow = Prisma.ChartOfAccountGetPayload<{
   include: typeof chartOfAccountWithChildrenInclude;
 }>;
+
+// openingBalance is a Prisma Decimal (on both the account itself and each
+// row in `children`, since `children: true` pulls in full ChartOfAccount
+// rows), which React Server Components can't pass to "use client"
+// components ("Decimal objects are not supported") — convert every one to a
+// plain number before this ever reaches a page/component, mirroring
+// serializeProductService().
+export type ChartOfAccountWithChildren = Omit<ChartOfAccountRow, "openingBalance" | "children"> & {
+  openingBalance: number;
+  children: (Omit<ChartOfAccountRow["children"][number], "openingBalance"> & {
+    openingBalance: number;
+  })[];
+};
+
+function serializeChartOfAccount(account: ChartOfAccountRow): ChartOfAccountWithChildren {
+  return {
+    ...account,
+    openingBalance: Number(account.openingBalance),
+    children: account.children.map((child) => ({
+      ...child,
+      openingBalance: Number(child.openingBalance),
+    })),
+  };
+}
 
 export async function getActiveChartOfAccounts(): Promise<ChartOfAccountOption[]> {
   return db.chartOfAccount.findMany({
@@ -55,7 +79,7 @@ export async function getActiveChartOfAccounts(): Promise<ChartOfAccountOption[]
 export async function listChartOfAccounts(
   filter: ListChartOfAccountsQuery
 ): Promise<ChartOfAccountWithChildren[]> {
-  return db.chartOfAccount.findMany({
+  const accounts = await db.chartOfAccount.findMany({
     where: {
       type: filter.type,
       subType: filter.subType,
@@ -65,6 +89,7 @@ export async function listChartOfAccounts(
     include: chartOfAccountWithChildrenInclude,
     orderBy: { code: "asc" },
   });
+  return accounts.map(serializeChartOfAccount);
 }
 
 export async function getChartOfAccountById(id: string): Promise<ChartOfAccountWithChildren> {
@@ -77,7 +102,7 @@ export async function getChartOfAccountById(id: string): Promise<ChartOfAccountW
     throw new ChartOfAccountNotFoundError(id);
   }
 
-  return account;
+  return serializeChartOfAccount(account);
 }
 
 /** Walks the ancestor chain of `newParentId`; throws if `accountId` appears in it. */
@@ -140,7 +165,7 @@ export async function createChartOfAccount(
     }
 
     try {
-      return await tx.chartOfAccount.create({
+      const created = await tx.chartOfAccount.create({
         data: {
           code: input.code,
           name: input.name,
@@ -157,6 +182,7 @@ export async function createChartOfAccount(
         },
         include: chartOfAccountWithChildrenInclude,
       });
+      return serializeChartOfAccount(created);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -227,7 +253,7 @@ export async function updateChartOfAccount(
     }
 
     try {
-      return await tx.chartOfAccount.update({
+      const updated = await tx.chartOfAccount.update({
         where: { id },
         data: {
           code: input.code,
@@ -244,6 +270,7 @@ export async function updateChartOfAccount(
         },
         include: chartOfAccountWithChildrenInclude,
       });
+      return serializeChartOfAccount(updated);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -274,9 +301,10 @@ export async function deactivateChartOfAccount(id: string): Promise<ChartOfAccou
     );
   }
 
-  return db.chartOfAccount.update({
+  const deactivated = await db.chartOfAccount.update({
     where: { id },
     data: { isActive: false },
     include: chartOfAccountWithChildrenInclude,
   });
+  return serializeChartOfAccount(deactivated);
 }

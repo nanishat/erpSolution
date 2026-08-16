@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { TaxRate } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { TaxRate } from "@/modules/tax/services/tax-rate.service";
 
 export function TaxRateTable({ rates }: { rates: TaxRate[] }) {
   const router = useRouter();
@@ -59,7 +59,7 @@ export function TaxRateTable({ rates }: { rates: TaxRate[] }) {
               <td className="px-3 py-2">{rate.direction}</td>
               <td className="px-3 py-2">{rate.category}</td>
               <td className="px-3 py-2">{rate.name}</td>
-              <td className="px-3 py-2">{rate.ratePercent.toString()}</td>
+              <td className="px-3 py-2">{rate.ratePercent.toFixed(2)}</td>
               <td className="px-3 py-2">{rate.isActive ? "Active" : "Inactive"}</td>
               <td className="px-3 py-2 text-right">
                 {rate.isActive && (

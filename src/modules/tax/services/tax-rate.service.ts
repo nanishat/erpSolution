@@ -1,4 +1,4 @@
-import type { TaxRate } from "@prisma/client";
+import type { TaxRate as TaxRateRow } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type {
@@ -6,6 +6,16 @@ import type {
   ListTaxRatesQuery,
   UpdateTaxRateInput,
 } from "@/modules/tax/validations/tax-rate.schema";
+
+// ratePercent is a Prisma Decimal, which React Server Components can't pass
+// to "use client" components ("Decimal objects are not supported") —
+// convert to a plain number before this ever reaches TaxRateTable or
+// AddTaxApplicationForm, mirroring serializeProductService().
+export type TaxRate = Omit<TaxRateRow, "ratePercent"> & { ratePercent: number };
+
+function serializeTaxRate(rate: TaxRateRow): TaxRate {
+  return { ...rate, ratePercent: Number(rate.ratePercent) };
+}
 
 export class TaxRateNotFoundError extends Error {
   constructor(id: string) {
@@ -15,7 +25,7 @@ export class TaxRateNotFoundError extends Error {
 }
 
 export async function listTaxRates(filter: ListTaxRatesQuery): Promise<TaxRate[]> {
-  return db.taxRate.findMany({
+  const rates = await db.taxRate.findMany({
     where: {
       type: filter.type,
       direction: filter.direction,
@@ -24,6 +34,7 @@ export async function listTaxRates(filter: ListTaxRatesQuery): Promise<TaxRate[]
     },
     orderBy: [{ type: "asc" }, { direction: "asc" }, { ratePercent: "asc" }],
   });
+  return rates.map(serializeTaxRate);
 }
 
 export async function getTaxRateById(id: string): Promise<TaxRate> {
@@ -33,11 +44,11 @@ export async function getTaxRateById(id: string): Promise<TaxRate> {
     throw new TaxRateNotFoundError(id);
   }
 
-  return rate;
+  return serializeTaxRate(rate);
 }
 
 export async function createTaxRate(input: CreateTaxRateInput): Promise<TaxRate> {
-  return db.taxRate.create({
+  const created = await db.taxRate.create({
     data: {
       type: input.type,
       category: input.category,
@@ -49,6 +60,7 @@ export async function createTaxRate(input: CreateTaxRateInput): Promise<TaxRate>
       effectiveTo: input.effectiveTo,
     },
   });
+  return serializeTaxRate(created);
 }
 
 export async function updateTaxRate(id: string, input: UpdateTaxRateInput): Promise<TaxRate> {
@@ -57,7 +69,7 @@ export async function updateTaxRate(id: string, input: UpdateTaxRateInput): Prom
     throw new TaxRateNotFoundError(id);
   }
 
-  return db.taxRate.update({
+  const updated = await db.taxRate.update({
     where: { id },
     data: {
       type: input.type,
@@ -71,6 +83,7 @@ export async function updateTaxRate(id: string, input: UpdateTaxRateInput): Prom
       effectiveTo: input.effectiveTo,
     },
   });
+  return serializeTaxRate(updated);
 }
 
 /**
@@ -88,8 +101,9 @@ export async function deactivateTaxRate(id: string): Promise<TaxRate> {
     throw new TaxRateNotFoundError(id);
   }
 
-  return db.taxRate.update({
+  const deactivated = await db.taxRate.update({
     where: { id },
     data: { isActive: false },
   });
+  return serializeTaxRate(deactivated);
 }

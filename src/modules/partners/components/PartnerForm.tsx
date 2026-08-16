@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import type { Partner, PartnerType } from "@prisma/client";
+import type { PartnerType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import type { BranchOption } from "@/modules/core/services/branch.service";
+import type { Partner } from "@/modules/partners/services/partner.service";
 import {
   createPartnerSchema,
   updatePartnerSchema,

@@ -103,24 +103,69 @@ const journalEntryInclude = {
   },
 } satisfies Prisma.JournalEntryInclude;
 
-export type JournalEntryWithLines = Prisma.JournalEntryGetPayload<{
+type JournalEntryRow = Prisma.JournalEntryGetPayload<{
   include: typeof journalEntryInclude;
 }>;
 
+// debit/credit (JournalLine), ratePercent/baseAmount/taxAmount
+// (TaxApplication), and the nested line.account.openingBalance (the full
+// ChartOfAccount pulled in via `account: true`) are all Prisma Decimals,
+// which React Server Components can't pass to "use client" components
+// ("Decimal objects are not supported") — convert every one of them to a
+// plain number before this ever reaches a page/component, mirroring
+// serializeProductService() in product-service.service.ts.
+export type JournalEntryWithLines = Omit<JournalEntryRow, "lines" | "taxApplications"> & {
+  lines: (Omit<JournalEntryRow["lines"][number], "debit" | "credit" | "account"> & {
+    debit: number;
+    credit: number;
+    account: Omit<JournalEntryRow["lines"][number]["account"], "openingBalance"> & {
+      openingBalance: number;
+    };
+  })[];
+  taxApplications: (Omit<
+    JournalEntryRow["taxApplications"][number],
+    "ratePercent" | "baseAmount" | "taxAmount"
+  > & {
+    ratePercent: number;
+    baseAmount: number;
+    taxAmount: number;
+  })[];
+};
+
+function serializeJournalEntry(entry: JournalEntryRow): JournalEntryWithLines {
+  return {
+    ...entry,
+    lines: entry.lines.map((line) => ({
+      ...line,
+      debit: Number(line.debit),
+      credit: Number(line.credit),
+      account: { ...line.account, openingBalance: Number(line.account.openingBalance) },
+    })),
+    taxApplications: entry.taxApplications.map((app) => ({
+      ...app,
+      ratePercent: Number(app.ratePercent),
+      baseAmount: Number(app.baseAmount),
+      taxAmount: Number(app.taxAmount),
+    })),
+  };
+}
+
 export async function getJournalEntries(): Promise<JournalEntryWithLines[]> {
-  return db.journalEntry.findMany({
+  const entries = await db.journalEntry.findMany({
     include: journalEntryInclude,
     orderBy: { date: "desc" },
   });
+  return entries.map(serializeJournalEntry);
 }
 
 export async function getJournalEntryById(
   id: string
 ): Promise<JournalEntryWithLines | null> {
-  return db.journalEntry.findUnique({
+  const entry = await db.journalEntry.findUnique({
     where: { id },
     include: journalEntryInclude,
   });
+  return entry ? serializeJournalEntry(entry) : null;
 }
 
 async function createJournalEntryWithClient(
@@ -143,7 +188,7 @@ async function createJournalEntryWithClient(
     date: input.date,
   });
 
-  return tx.journalEntry.create({
+  const created = await tx.journalEntry.create({
     data: {
       date: input.date,
       description: input.description,
@@ -164,6 +209,7 @@ async function createJournalEntryWithClient(
     },
     include: journalEntryInclude,
   });
+  return serializeJournalEntry(created);
 }
 
 /**
@@ -209,7 +255,7 @@ export async function updateJournalEntry(
 
     await tx.journalLine.deleteMany({ where: { journalEntryId: entryId } });
 
-    return tx.journalEntry.update({
+    const updated = await tx.journalEntry.update({
       where: { id: entryId },
       data: {
         date: input.date,
@@ -227,6 +273,7 @@ export async function updateJournalEntry(
       },
       include: journalEntryInclude,
     });
+    return serializeJournalEntry(updated);
   });
 }
 
@@ -309,7 +356,10 @@ async function reverseJournalEntryWithClient(
     include: journalEntryInclude,
   });
 
-  return { original: updatedOriginal, reversal };
+  return {
+    original: serializeJournalEntry(updatedOriginal),
+    reversal: serializeJournalEntry(reversal),
+  };
 }
 
 /**
@@ -386,11 +436,12 @@ async function postJournalEntryWithClient(
   // TaxApplication.
   await postApprovedTaxApplicationLines(tx, entry);
 
-  return tx.journalEntry.update({
+  const posted = await tx.journalEntry.update({
     where: { id: entryId },
     data: { status: "POSTED" },
     include: journalEntryInclude,
   });
+  return serializeJournalEntry(posted);
 }
 
 /**

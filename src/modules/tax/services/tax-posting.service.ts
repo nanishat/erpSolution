@@ -1,7 +1,5 @@
 import type { AccountSubType, Prisma, TaxDirection, TaxType } from "@prisma/client";
 
-import type { JournalEntryWithLines } from "@/modules/accounting/services/journal-entry.service";
-
 export const VAT_PAYABLE_CODE = "2110";
 export const VAT_RECEIVABLE_CODE = "1210";
 export const TDS_PAYABLE_CODE = "2120";
@@ -44,6 +42,21 @@ export class TaxAmountExceedsSettlementError extends Error {
 }
 
 type LineSide = "debit" | "credit";
+
+// Accepts either the raw Prisma Decimal (used internally, before the
+// journal-entry.service.ts layer converts to number for UI consumption) or
+// an already-serialized number — every access below goes through Number()
+// anyway, so this function doesn't care which one it gets.
+type JournalEntryForTaxPosting = {
+  id: string;
+  lines: {
+    accountId: string;
+    branchId: string;
+    debit: Prisma.Decimal | number;
+    credit: Prisma.Decimal | number;
+    account: { subType: AccountSubType | null };
+  }[];
+};
 
 type TaxPostingRule = {
   // Which ChartOfAccount the tax amount posts to.
@@ -123,7 +136,7 @@ function getTaxPostingRule(taxType: TaxType, direction: TaxDirection | null): Ta
  */
 export async function postApprovedTaxApplicationLines(
   tx: Prisma.TransactionClient,
-  entry: JournalEntryWithLines
+  entry: JournalEntryForTaxPosting
 ): Promise<void> {
   const taxApplications = await tx.taxApplication.findMany({
     where: { journalEntryId: entry.id, status: "APPROVED" },

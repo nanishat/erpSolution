@@ -3,11 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Partner, PartnerType } from "@prisma/client";
+import type { PartnerType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { BranchOption } from "@/modules/core/services/branch.service";
+import type { Partner } from "@/modules/partners/services/partner.service";
 
 export function PartnerTable({
   partners,

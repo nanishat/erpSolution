@@ -1,4 +1,4 @@
-import type { Partner, Prisma } from "@prisma/client";
+import type { Partner as PartnerRow, Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type {
@@ -6,6 +6,23 @@ import type {
   ListPartnersQuery,
   UpdatePartnerInput,
 } from "@/modules/partners/validations/partner.schema";
+
+// outstandingBalance/payableBalance are Prisma Decimals, which React Server
+// Components can't pass to "use client" components ("Decimal objects are
+// not supported") — convert to plain numbers before this ever reaches
+// PartnerTable/PartnerForm, mirroring serializeProductService().
+export type Partner = Omit<PartnerRow, "outstandingBalance" | "payableBalance"> & {
+  outstandingBalance: number;
+  payableBalance: number;
+};
+
+function serializePartner(partner: PartnerRow): Partner {
+  return {
+    ...partner,
+    outstandingBalance: Number(partner.outstandingBalance),
+    payableBalance: Number(partner.payableBalance),
+  };
+}
 
 export class PartnerNotFoundError extends Error {
   constructor(id: string) {
@@ -44,10 +61,11 @@ export async function listPartners(filter: ListPartnersQuery): Promise<Partner[]
     ];
   }
 
-  return db.partner.findMany({
+  const partners = await db.partner.findMany({
     where,
     orderBy: { name: "asc" },
   });
+  return partners.map(serializePartner);
 }
 
 export async function getPartnerById(id: string): Promise<Partner> {
@@ -57,7 +75,7 @@ export async function getPartnerById(id: string): Promise<Partner> {
     throw new PartnerNotFoundError(id);
   }
 
-  return partner;
+  return serializePartner(partner);
 }
 
 async function assertLocalBranchExists(
@@ -79,7 +97,7 @@ export async function createPartner(input: CreatePartnerInput): Promise<Partner>
       await assertLocalBranchExists(tx, input.localBranchId);
     }
 
-    return tx.partner.create({
+    const created = await tx.partner.create({
       data: {
         type: input.type,
         name: input.name,
@@ -103,6 +121,7 @@ export async function createPartner(input: CreatePartnerInput): Promise<Partner>
         createdById: input.createdById,
       },
     });
+    return serializePartner(created);
   });
 }
 
@@ -121,7 +140,7 @@ export async function updatePartner(id: string, input: UpdatePartnerInput): Prom
       await assertLocalBranchExists(tx, input.localBranchId);
     }
 
-    return tx.partner.update({
+    const updated = await tx.partner.update({
       where: { id },
       data: {
         name: input.name,
@@ -144,6 +163,7 @@ export async function updatePartner(id: string, input: UpdatePartnerInput): Prom
         isActive: input.isActive,
       },
     });
+    return serializePartner(updated);
   });
 }
 
@@ -153,8 +173,9 @@ export async function deactivatePartner(id: string): Promise<Partner> {
     throw new PartnerNotFoundError(id);
   }
 
-  return db.partner.update({
+  const deactivated = await db.partner.update({
     where: { id },
     data: { isActive: false },
   });
+  return serializePartner(deactivated);
 }

@@ -135,9 +135,9 @@ export function TaxApplicationTable({
                     <td className="px-3 py-2">{app.partner?.name ?? "—"}</td>
                     <td className="px-3 py-2">{app.taxType}</td>
                     <td className="px-3 py-2">{app.direction ?? "—"}</td>
-                    <td className="px-3 py-2 text-right">{Number(app.ratePercent).toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right">{Number(app.baseAmount).toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right">{Number(app.taxAmount).toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right">{app.ratePercent.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right">{app.baseAmount.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right">{app.taxAmount.toFixed(2)}</td>
                     <td className="px-3 py-2">
                       {app.status}
                       {app.status === "REJECTED" && app.rejectionReason && (

@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import type { JournalEntryStatus } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import { useJournalEntryActions } from "@/modules/accounting/hooks/useJournalEntryActions";
-import type { JournalEntryWithLines } from "@/modules/accounting/types/journal-entry.types";
 
-export function JournalEntryDetailActions({ entry }: { entry: JournalEntryWithLines }) {
+// Narrowed to exactly what this component reads/passes to
+// useJournalEntryActions — no need to carry the full JournalEntryWithLines
+// (lines, taxApplications, branch, etc.) across the client boundary just for
+// a couple of action buttons.
+type JournalEntryActionsEntry = {
+  id: string;
+  documentNumber: string;
+  status: JournalEntryStatus;
+  reversalOfEntryId: string | null;
+};
+
+export function JournalEntryDetailActions({ entry }: { entry: JournalEntryActionsEntry }) {
   const { pendingId, handlePost, handleReverse } = useJournalEntryActions();
   const isPending = pendingId === entry.id;
 
