@@ -7,6 +7,7 @@ import {
   JournalEntryAlreadyPostedError,
   JournalEntryAlreadyReversedError,
   JournalEntryImmutableError,
+  JournalEntryMustPostViaInvoiceError,
   JournalEntryNotFoundError,
   JournalEntryNotPostedError,
   JournalEntryVoidError,
@@ -31,7 +32,8 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
     error instanceof JournalEntryNotPostedError ||
     error instanceof JournalEntryAlreadyReversedError ||
     error instanceof CannotReverseAReversalError ||
-    error instanceof PendingTaxApprovalError
+    error instanceof PendingTaxApprovalError ||
+    error instanceof JournalEntryMustPostViaInvoiceError
   ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }

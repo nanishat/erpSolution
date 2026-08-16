@@ -99,6 +99,23 @@ export class PendingTaxApprovalError extends Error {
   }
 }
 
+// Guards the data-integrity gap where posting an Invoice's eagerly-created
+// JournalEntry through this generic path (e.g. the "Post" button on the
+// general journal entries list) would flip the ledger live while skipping
+// everything postInvoice does around it — the Invoice's own status update
+// and the Partner balance increment. See postJournalEntryWithClient's
+// invoice-link check and postInvoiceLinkedJournalEntry below.
+export class JournalEntryMustPostViaInvoiceError extends Error {
+  constructor(entryId: string, invoiceId: string, invoiceNumber: string) {
+    super(
+      `Journal entry ${entryId} belongs to Invoice ${invoiceNumber} (${invoiceId}) and cannot be ` +
+        `posted directly — post it via POST /api/invoices/${invoiceId}/post instead, which also ` +
+        "updates the Invoice's status and the Partner's balance"
+    );
+    this.name = "JournalEntryMustPostViaInvoiceError";
+  }
+}
+
 const journalEntryInclude = {
   branch: { select: { id: true, name: true, code: true } },
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
@@ -111,6 +128,11 @@ const journalEntryInclude = {
     },
     orderBy: { createdAt: "asc" },
   },
+  // Surfaced so the UI can hide/disable the generic "Post" button on an
+  // invoice-linked entry and point to the Invoice instead — see
+  // JournalEntryMustPostViaInvoiceError for why posting it here directly is
+  // rejected at the service layer regardless of what the UI shows.
+  invoice: { select: { id: true, invoiceNumber: true } },
 } satisfies Prisma.JournalEntryInclude;
 
 type JournalEntryRow = Prisma.JournalEntryGetPayload<{
@@ -444,7 +466,8 @@ export async function voidDraftJournalEntry(
 
 async function postJournalEntryWithClient(
   tx: Prisma.TransactionClient,
-  entryId: string
+  entryId: string,
+  options?: { allowInvoiceLinked?: boolean }
 ): Promise<JournalEntryWithLines> {
   const entry = await tx.journalEntry.findUnique({
     where: { id: entryId },
@@ -459,6 +482,20 @@ async function postJournalEntryWithClient(
   }
   if (entry.status === "VOID") {
     throw new JournalEntryVoidError(entryId);
+  }
+
+  // The real enforcement point for the data-integrity gap this guards
+  // against: an Invoice's eagerly-created JournalEntry must never be posted
+  // through this generic path (UI hiding the "Post" button is only a
+  // nice-to-have, not the fix) — doing so would flip the ledger live while
+  // skipping postInvoice's own Invoice.status transition and Partner
+  // balance update entirely. `entry.invoice` comes from journalEntryInclude
+  // above, so this needs no extra query. postInvoice's own posting step
+  // goes through postInvoiceLinkedJournalEntry instead, which explicitly
+  // opts out via `allowInvoiceLinked` since it IS the sanctioned path this
+  // error message points callers to.
+  if (!options?.allowInvoiceLinked && entry.invoice) {
+    throw new JournalEntryMustPostViaInvoiceError(entryId, entry.invoice.id, entry.invoice.invoiceNumber);
   }
 
   // Defense in depth: re-check the balance against current DB state rather than
@@ -515,4 +552,22 @@ export async function postJournalEntry(
     return postJournalEntryWithClient(tx, entryId);
   }
   return db.$transaction((transaction) => postJournalEntryWithClient(transaction, entryId));
+}
+
+/**
+ * Posts a JournalEntry known to be linked to an Invoice — for postInvoice's
+ * own internal use ONLY. postJournalEntry (above) rejects any invoice-linked
+ * entry with JournalEntryMustPostViaInvoiceError specifically to stop it
+ * being posted through any path other than POST /api/invoices/[id]/post;
+ * this function IS that path's internal posting step, so it deliberately
+ * opts back in via `allowInvoiceLinked`. Always requires an already-open
+ * transaction (never opens its own) since it only ever runs as one step
+ * inside postInvoice's larger transaction — there is no standalone use case
+ * for calling this outside of that flow.
+ */
+export async function postInvoiceLinkedJournalEntry(
+  entryId: string,
+  tx: Prisma.TransactionClient
+): Promise<JournalEntryWithLines> {
+  return postJournalEntryWithClient(tx, entryId, { allowInvoiceLinked: true });
 }

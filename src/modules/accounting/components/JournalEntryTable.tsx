@@ -69,16 +69,25 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
                       >
                         Edit
                       </Link>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="ml-2"
-                        disabled={isPending}
-                        onClick={() => handlePost(entry)}
-                      >
-                        Post
-                      </Button>
+                      {entry.invoice ? (
+                        // No Invoice detail/list UI exists yet (API-only so
+                        // far) to link to — plain text until that page
+                        // ships, rather than a link that 404s.
+                        <span className="ml-2 text-sm text-muted-foreground">
+                          Belongs to Invoice {entry.invoice.invoiceNumber} — post it from there
+                        </span>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="ml-2"
+                          disabled={isPending}
+                          onClick={() => handlePost(entry)}
+                        >
+                          Post
+                        </Button>
+                      )}
                     </>
                   )}
                   {entry.status === "POSTED" && !entry.reversalOfEntryId && (

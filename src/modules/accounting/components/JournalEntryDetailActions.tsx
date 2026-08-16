@@ -15,6 +15,7 @@ type JournalEntryActionsEntry = {
   documentNumber: string;
   status: JournalEntryStatus;
   reversalOfEntryId: string | null;
+  invoice: { id: string; invoiceNumber: string } | null;
 };
 
 export function JournalEntryDetailActions({ entry }: { entry: JournalEntryActionsEntry }) {
@@ -32,15 +33,24 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryAction
           <Button asChild variant="outline" size="sm">
             <Link href={`/accounting/journal-entries/${entry.id}/edit`}>Edit</Link>
           </Button>
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            disabled={isPending}
-            onClick={() => handlePost(entry)}
-          >
-            Post
-          </Button>
+          {entry.invoice ? (
+            // No Invoice detail/list UI exists yet (API-only so far) to
+            // link to — plain text until that page ships, rather than a
+            // link that 404s.
+            <p className="self-center text-sm text-muted-foreground">
+              Belongs to Invoice {entry.invoice.invoiceNumber} — post it from there.
+            </p>
+          ) : (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={isPending}
+              onClick={() => handlePost(entry)}
+            >
+              Post
+            </Button>
+          )}
         </>
       )}
       {entry.status === "POSTED" && !entry.reversalOfEntryId && (

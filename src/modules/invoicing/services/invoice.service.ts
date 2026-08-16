@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import {
   BranchNotFoundError,
   createJournalEntry,
-  postJournalEntry,
+  postInvoiceLinkedJournalEntry,
   reverseJournalEntry,
   voidDraftJournalEntry,
 } from "@/modules/accounting/services/journal-entry.service";
@@ -439,21 +439,27 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceW
  * there is no path where a POSTED invoice's lines or header could still be
  * reached through this function.
  *
- * Delegates all ledger-side validation to the existing postJournalEntry
+ * Delegates all ledger-side validation to the existing postInvoiceLinkedJournalEntry
  * (balance check, active-account check, and — critically — the tax approval
  * gate: PendingTaxApprovalError if any linked TaxApplication is still
  * PENDING_REVIEW) rather than reimplementing any of it, for both directions
  * alike — the check is generic over the JournalEntry, not direction-aware.
- * Its rejection propagates unchanged and, since everything below runs
- * inside one transaction, rolls back cleanly: the Invoice stays DRAFT and
- * neither Partner balance field is touched.
+ * postInvoiceLinkedJournalEntry (not the plain postJournalEntry vouchers
+ * use) specifically because this invoice's JournalEntry is invoice-linked:
+ * postJournalEntry rejects any invoice-linked entry outright
+ * (JournalEntryMustPostViaInvoiceError) to stop it being posted through any
+ * OTHER path and silently skipping everything below — this IS that
+ * sanctioned path, so it opts back in. Its rejection propagates unchanged
+ * and, since everything below runs inside one transaction, rolls back
+ * cleanly: the Invoice stays DRAFT and neither Partner balance field is
+ * touched.
  *
  * taxTotal/grandTotal are (re)computed here, right before posting, from the
  * sum of every APPROVED TaxApplication on the invoice's JournalEntry —
  * deliberately at posting time rather than at tax-approval time:
  * createTaxApplication only accepts a still-DRAFT JournalEntry
- * (JournalEntryNotDraftError otherwise), and postJournalEntry above just
- * flipped this one to POSTED, so no further TaxApplication can ever attach
+ * (JournalEntryNotDraftError otherwise), and postInvoiceLinkedJournalEntry
+ * above just flipped this one to POSTED, so no further TaxApplication can ever attach
  * to it — every APPROVED one that will ever exist for this invoice is
  * already final by this point. This also keeps tax-application.service.ts
  * (shared by vouchers and invoices alike) unaware of the Invoice model
@@ -482,7 +488,7 @@ export async function postInvoice(id: string): Promise<InvoiceWithLines> {
       throw new InvoiceAlreadyPostedError(id, invoice.status);
     }
 
-    await postJournalEntry(invoice.journalEntryId, tx);
+    await postInvoiceLinkedJournalEntry(invoice.journalEntryId, tx);
 
     const approvedTaxApplications = await tx.taxApplication.findMany({
       where: { journalEntryId: invoice.journalEntryId, status: "APPROVED" },
