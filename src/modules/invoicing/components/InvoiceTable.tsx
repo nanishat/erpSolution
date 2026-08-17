@@ -18,12 +18,12 @@ const STATUS_OPTIONS: InvoiceStatus[] = [
 ];
 
 /**
- * Shared list table for both Customer Invoices (direction: CUSTOMER, this
- * task) and the future Vendor Bill list (direction: VENDOR) — the caller
- * decides which slice of Invoice to fetch (via getInvoices({ direction }))
- * and which detail route to link into (via basePath); this component itself
- * has no direction-specific logic beyond the `partners` filter dropdown,
- * which the caller already scoped by partner type when it fetched them.
+ * Shared list table for both Customer Invoices (direction: CUSTOMER) and
+ * Vendor Bills (direction: VENDOR) — the caller decides which slice of
+ * Invoice to fetch (via getInvoices({ direction })) and which detail route
+ * to link into (via basePath); this component itself has no direction-
+ * specific logic beyond the `partners` filter dropdown, which the caller
+ * already scoped by partner type when it fetched them.
  */
 export function InvoiceTable({
   invoices,

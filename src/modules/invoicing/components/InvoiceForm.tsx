@@ -23,12 +23,13 @@ function emptyLine(): LineRow {
 }
 
 /**
- * Shared create form for both Customer Invoices (direction: CUSTOMER, this
- * task) and the future Vendor Bill create page (direction: VENDOR) — the
- * `direction` prop drives the one real difference between the two
- * (createInvoiceSchema's `sector` field only exists on the CUSTOMER branch
- * of its discriminated union), everything else — partner/branch/line-item
- * plumbing — is identical between a Customer Invoice and a Vendor Bill.
+ * Shared create form for both Customer Invoices (direction: CUSTOMER) and
+ * Vendor Bills (direction: VENDOR) — the `direction` prop drives the two
+ * real differences between them: createInvoiceSchema's `sector` field only
+ * exists on the CUSTOMER branch of its discriminated union (hidden for
+ * VENDOR), and only ProductService rows with a non-null expenseAccountId are
+ * selectable for VENDOR lines (see selectableProductServices below).
+ * Everything else — partner/branch/line-item plumbing — is identical.
  * `partners`/`productServices` are pre-filtered by the caller (partner.type,
  * active-only) rather than filtered here, same convention as
  * CashBankVoucherForm receiving pre-fetched accounts/branches.
@@ -68,7 +69,7 @@ export function InvoiceForm({
   };
 
   const handleProductServiceChange = (key: string, productServiceId: string) => {
-    const productService = productServices.find((p) => p.id === productServiceId);
+    const productService = selectableProductServices.find((p) => p.id === productServiceId);
     updateLine(key, {
       productServiceId,
       description: productService?.name ?? "",
@@ -79,6 +80,18 @@ export function InvoiceForm({
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (key: string) =>
     setLines((prev) => (prev.length === 1 ? prev : prev.filter((line) => line.key !== key)));
+
+  // direction: VENDOR lines resolve their debit account via
+  // ProductService.expenseAccountId (see createInvoice) — a row without one
+  // set is rejected server-side (InvoiceLineMissingExpenseAccountError).
+  // Filtering it out of the dropdown here avoids a submit-then-reject round
+  // trip; the server check remains the actual enforcement. direction:
+  // CUSTOMER has no equivalent restriction (every ProductService has a
+  // required incomeAccountId), so the full list is offered as-is.
+  const selectableProductServices =
+    direction === "VENDOR"
+      ? productServices.filter((productService) => productService.expenseAccountId != null)
+      : productServices;
 
   const lineTotal = (line: LineRow) => (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
   const subtotal = lines.reduce((sum, line) => sum + lineTotal(line), 0);
@@ -256,7 +269,7 @@ export function InvoiceForm({
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                     >
                       <option value="">Custom line</option>
-                      {productServices.map((productService) => (
+                      {selectableProductServices.map((productService) => (
                         <option key={productService.id} value={productService.id}>
                           {productService.code} — {productService.name}
                         </option>

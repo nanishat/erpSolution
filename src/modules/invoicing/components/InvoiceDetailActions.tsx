@@ -19,7 +19,7 @@ type InvoiceActionsEntry = {
 
 /**
  * Status-based action bar for the Invoice detail page — direction-agnostic
- * (works the same for a Customer Invoice or a future Vendor Bill), mirrors
+ * (works the same for a Customer Invoice or a Vendor Bill), mirrors
  * JournalEntryDetailActions' pattern:
  *   DRAFT: Post, Cancel
  *   POSTED / PARTIALLY_PAID: Record Payment, Reverse (disabled once any
