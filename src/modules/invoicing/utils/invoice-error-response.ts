@@ -14,18 +14,27 @@ import {
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
 import {
+  AccountsPayableNotConfiguredError,
+  AccountsReceivableNotConfiguredError,
   InvoiceAlreadyPostedError,
   InvoiceCancelledError,
   InvoiceHasPaymentsError,
+  InvoiceLineMissingExpenseAccountError,
+  InvoiceLineMissingIncomeAccountError,
   InvoiceNotCancellableError,
   InvoiceNotFoundError,
   InvoiceNotReversibleError,
   InvoicePaidCannotReverseError,
   InvoiceVoidError,
+  PartnerNotCustomerError,
+  PartnerNotVendorError,
+  ProductServiceNotFoundError,
+  UnbalancedInvoiceJournalEntryError,
 } from "@/modules/invoicing/services/invoice.service";
+import { PartnerNotFoundError } from "@/modules/partners/services/partner.service";
 
 export function invoiceErrorResponse(error: unknown): NextResponse {
-  if (error instanceof InvoiceNotFoundError) {
+  if (error instanceof InvoiceNotFoundError || error instanceof PartnerNotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
   }
   if (
@@ -56,8 +65,16 @@ export function invoiceErrorResponse(error: unknown): NextResponse {
   }
   if (
     error instanceof UnbalancedJournalEntryError ||
+    error instanceof UnbalancedInvoiceJournalEntryError ||
     error instanceof InactiveAccountJournalLineError ||
-    error instanceof BranchNotFoundError
+    error instanceof BranchNotFoundError ||
+    error instanceof PartnerNotCustomerError ||
+    error instanceof PartnerNotVendorError ||
+    error instanceof ProductServiceNotFoundError ||
+    error instanceof InvoiceLineMissingIncomeAccountError ||
+    error instanceof InvoiceLineMissingExpenseAccountError ||
+    error instanceof AccountsReceivableNotConfiguredError ||
+    error instanceof AccountsPayableNotConfiguredError
   ) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

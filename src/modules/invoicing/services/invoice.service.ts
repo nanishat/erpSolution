@@ -14,7 +14,10 @@ import {
   generateInvoiceNumber,
   generateVendorBillNumber,
 } from "@/modules/invoicing/services/invoice-document-sequence.service";
-import type { CreateInvoiceInput } from "@/modules/invoicing/validations/invoice.schema";
+import type {
+  CreateInvoiceInput,
+  ListInvoicesQuery,
+} from "@/modules/invoicing/validations/invoice.schema";
 import { PartnerNotFoundError } from "@/modules/partners/services/partner.service";
 
 // Same placeholder used by the voucher create paths (journal-entry.actions.ts,
@@ -201,14 +204,101 @@ function roundCurrency(amount: number): number {
 const invoiceInclude = {
   branch: { select: { id: true, name: true, code: true } },
   partner: { select: { id: true, name: true, type: true } },
-  journalEntry: { select: { id: true, documentNumber: true, status: true } },
+  // reversedByEntry is only ever non-null when this invoice went POSTED ->
+  // VOID via reverseInvoice (cancelInvoice voids the linked entry directly,
+  // never through a reversal) — surfaced so the detail page can cross-link
+  // to the reversal, same pattern as JournalEntryDetailPage's own
+  // reversalOfEntry/reversedByEntry display.
+  journalEntry: {
+    select: {
+      id: true,
+      documentNumber: true,
+      status: true,
+      reversedByEntry: { select: { id: true, documentNumber: true } },
+    },
+  },
   lines: {
     include: { productService: { select: { id: true, code: true, name: true } } },
     orderBy: { sortOrder: "asc" },
   },
+  payments: {
+    select: { id: true, amount: true, date: true, method: true, reference: true, createdAt: true },
+    orderBy: { date: "asc" },
+  },
 } satisfies Prisma.InvoiceInclude;
 
-export type InvoiceWithLines = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
+type InvoiceRow = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
+
+// subtotal/taxTotal/grandTotal/amountPaid (Invoice), quantity/unitPrice/
+// lineTotal (InvoiceLine), and amount (Payment) are all Prisma Decimals,
+// which React Server Components can't pass to "use client" components
+// ("Decimal objects are not supported") — convert every one of them to a
+// plain number before this ever reaches a page/component, mirroring
+// serializeJournalEntry() in journal-entry.service.ts.
+export type InvoiceWithLines = Omit<
+  InvoiceRow,
+  "subtotal" | "taxTotal" | "grandTotal" | "amountPaid" | "lines" | "payments"
+> & {
+  subtotal: number;
+  taxTotal: number;
+  grandTotal: number;
+  amountPaid: number;
+  lines: (Omit<InvoiceRow["lines"][number], "quantity" | "unitPrice" | "lineTotal"> & {
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  })[];
+  payments: (Omit<InvoiceRow["payments"][number], "amount"> & { amount: number })[];
+};
+
+function serializeInvoice(invoice: InvoiceRow): InvoiceWithLines {
+  return {
+    ...invoice,
+    subtotal: Number(invoice.subtotal),
+    taxTotal: Number(invoice.taxTotal),
+    grandTotal: Number(invoice.grandTotal),
+    amountPaid: Number(invoice.amountPaid),
+    lines: invoice.lines.map((line) => ({
+      ...line,
+      quantity: Number(line.quantity),
+      unitPrice: Number(line.unitPrice),
+      lineTotal: Number(line.lineTotal),
+    })),
+    payments: invoice.payments.map((payment) => ({
+      ...payment,
+      amount: Number(payment.amount),
+    })),
+  };
+}
+
+export async function getInvoices(filter: ListInvoicesQuery): Promise<InvoiceWithLines[]> {
+  const where: Prisma.InvoiceWhereInput = {
+    direction: filter.direction,
+    status: filter.status,
+    partnerId: filter.partnerId,
+  };
+  if (filter.dateFrom || filter.dateTo) {
+    where.date = {
+      gte: filter.dateFrom,
+      lte: filter.dateTo,
+    };
+  }
+
+  const invoices = await db.invoice.findMany({
+    where,
+    include: invoiceInclude,
+    orderBy: { date: "desc" },
+  });
+  return invoices.map(serializeInvoice);
+}
+
+export async function getInvoiceById(id: string): Promise<InvoiceWithLines | null> {
+  const invoice = await db.invoice.findUnique({
+    where: { id },
+    include: invoiceInclude,
+  });
+  return invoice ? serializeInvoice(invoice) : null;
+}
 
 /**
  * Creates an Invoice in DRAFT status together with its eagerly-created DRAFT
@@ -399,7 +489,7 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceW
 
     const journalEntry = await createJournalEntry(journalEntryInput, UNASSIGNED_USER_ID, tx);
 
-    return tx.invoice.create({
+    const created = await tx.invoice.create({
       data: {
         invoiceNumber: documentNumber,
         direction: input.direction,
@@ -429,6 +519,7 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceW
       },
       include: invoiceInclude,
     });
+    return serializeInvoice(created);
   });
 }
 
@@ -511,11 +602,12 @@ export async function postInvoice(id: string): Promise<InvoiceWithLines> {
       });
     }
 
-    return tx.invoice.update({
+    const updated = await tx.invoice.update({
       where: { id },
       data: { status: "POSTED", taxTotal, grandTotal },
       include: invoiceInclude,
     });
+    return serializeInvoice(updated);
   });
 }
 
@@ -584,7 +676,7 @@ export async function cancelInvoice(id: string): Promise<CancelInvoiceResult> {
       include: invoiceInclude,
     });
 
-    return { invoice: updatedInvoice, journalEntry };
+    return { invoice: serializeInvoice(updatedInvoice), journalEntry };
   });
 }
 
@@ -667,6 +759,6 @@ export async function reverseInvoice(
       include: invoiceInclude,
     });
 
-    return { invoice: updatedInvoice, journalEntry: { original, reversal } };
+    return { invoice: serializeInvoice(updatedInvoice), journalEntry: { original, reversal } };
   });
 }

@@ -1,4 +1,4 @@
-import { InvoiceDirection } from "@prisma/client";
+import { InvoiceDirection, InvoiceStatus } from "@prisma/client";
 import { z } from "zod";
 
 // Free text, same precedent as TaxRate.category — the full sector list isn't
@@ -67,6 +67,18 @@ export const reverseInvoiceSchema = z.object({
   reason: z.string().trim().min(1).optional(),
 });
 
+// Powers both the Customer Invoice list (direction: CUSTOMER, this task) and
+// the future Vendor Bill list (direction: VENDOR) — see InvoiceTable's own
+// doc comment for how the two share this same query shape.
+export const listInvoicesQuerySchema = z.object({
+  direction: z.nativeEnum(InvoiceDirection).optional(),
+  status: z.nativeEnum(InvoiceStatus).optional(),
+  partnerId: z.string().optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+});
+
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
 export type ReverseInvoiceInput = z.infer<typeof reverseInvoiceSchema>;
+export type ListInvoicesQuery = z.infer<typeof listInvoicesQuerySchema>;
