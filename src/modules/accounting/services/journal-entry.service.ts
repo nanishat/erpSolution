@@ -116,6 +116,25 @@ export class JournalEntryMustPostViaInvoiceError extends Error {
   }
 }
 
+// Same category of gap as JournalEntryMustPostViaInvoiceError above, for
+// editing instead of posting: an Invoice's eagerly-created JournalEntry's
+// lines are the source Invoice.subtotal/lines were computed from — editing
+// them directly here would silently diverge the two. There is deliberately
+// no "edit it via the invoice instead" pointer in this message (unlike the
+// posting error, which points to a real endpoint): Invoice has no
+// updateInvoice function yet, so there is no alternate path to direct
+// callers to. This message says only that direct edits aren't allowed.
+export class JournalEntryMustEditViaInvoiceError extends Error {
+  constructor(entryId: string, invoiceId: string, invoiceNumber: string) {
+    super(
+      `Journal entry ${entryId} belongs to Invoice ${invoiceNumber} (${invoiceId}) and cannot be ` +
+        "edited directly — its lines are derived from the Invoice and editing them here would " +
+        "diverge from it"
+    );
+    this.name = "JournalEntryMustEditViaInvoiceError";
+  }
+}
+
 const journalEntryInclude = {
   branch: { select: { id: true, name: true, code: true } },
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
@@ -271,18 +290,41 @@ export async function createJournalEntry(
  * are intentionally not editable — the document number is stamped from the
  * voucher type/branch/month at creation and must stay a stable reference.
  * Rejects with JournalEntryImmutableError if the entry is POSTED or VOID.
+ *
+ * Rejects with JournalEntryMustEditViaInvoiceError if the entry is linked to
+ * an Invoice — same data-integrity concern as postJournalEntry's invoice-link
+ * guard: editing an invoice-linked entry's lines directly here would silently
+ * diverge them from Invoice.subtotal/lines, which are computed and stored
+ * independently on the Invoice row. Unlike the posting case there is no
+ * bypass here (no postInvoiceLinkedJournalEntry equivalent): nothing in this
+ * codebase legitimately calls updateJournalEntry on an invoice-linked entry
+ * today — Invoice has no updateInvoice function yet, and
+ * createInvoice/postInvoice never call updateJournalEntry — so this is an
+ * unconditional guard, not an opt-out-able one. If/when Invoice editing is
+ * built, it should get its own dedicated update path (mirroring
+ * postInvoiceLinkedJournalEntry), not a bypass grafted onto this function.
  */
 export async function updateJournalEntry(
   entryId: string,
   input: UpdateJournalEntryInput
 ): Promise<JournalEntryWithLines> {
   return db.$transaction(async (tx) => {
-    const existing = await tx.journalEntry.findUnique({ where: { id: entryId } });
+    const existing = await tx.journalEntry.findUnique({
+      where: { id: entryId },
+      include: { invoice: { select: { id: true, invoiceNumber: true } } },
+    });
     if (!existing) {
       throw new JournalEntryNotFoundError(entryId);
     }
     if (existing.status !== "DRAFT") {
       throw new JournalEntryImmutableError(entryId, existing.status);
+    }
+    if (existing.invoice) {
+      throw new JournalEntryMustEditViaInvoiceError(
+        entryId,
+        existing.invoice.id,
+        existing.invoice.invoiceNumber
+      );
     }
 
     await tx.journalLine.deleteMany({ where: { journalEntryId: entryId } });

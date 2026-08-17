@@ -35,6 +35,22 @@ export default async function EditJournalEntryPage({
     );
   }
 
+  // Mirrors the invoice-link guard in updateJournalEntry (which would
+  // reject the submit either way) — surfaced here too so a user who
+  // navigates straight to this URL doesn't fill out a form that can only
+  // ever fail.
+  if (entry.invoice) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold">Edit journal entry</h1>
+        <p className="text-sm text-destructive">
+          {entry.documentNumber} belongs to Invoice {entry.invoice.invoiceNumber} and cannot be
+          edited directly.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>

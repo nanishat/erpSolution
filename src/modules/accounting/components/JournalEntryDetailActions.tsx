@@ -28,19 +28,23 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryAction
 
   return (
     <div className="flex gap-2">
-      {entry.status === "DRAFT" && (
-        <>
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/accounting/journal-entries/${entry.id}/edit`}>Edit</Link>
-          </Button>
-          {entry.invoice ? (
-            // No Invoice detail/list UI exists yet (API-only so far) to
-            // link to — plain text until that page ships, rather than a
-            // link that 404s.
-            <p className="self-center text-sm text-muted-foreground">
-              Belongs to Invoice {entry.invoice.invoiceNumber} — post it from there.
-            </p>
-          ) : (
+      {entry.status === "DRAFT" &&
+        (entry.invoice ? (
+          // No Invoice detail/list UI exists yet (API-only so far) to link
+          // to — plain text until that page ships, rather than a link that
+          // 404s. Neither Edit nor Post is offered here: both are rejected
+          // at the service layer for an invoice-linked entry (editing would
+          // diverge its lines from Invoice.subtotal/lines, posting would
+          // skip the Invoice status/Partner balance update) — this is just
+          // reflecting that, not the actual enforcement.
+          <p className="self-center text-sm text-muted-foreground">
+            Belongs to Invoice {entry.invoice.invoiceNumber} — edit/post it from there.
+          </p>
+        ) : (
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/accounting/journal-entries/${entry.id}/edit`}>Edit</Link>
+            </Button>
             <Button
               type="button"
               variant="default"
@@ -50,9 +54,8 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryAction
             >
               Post
             </Button>
-          )}
-        </>
-      )}
+          </>
+        ))}
       {entry.status === "POSTED" && !entry.reversalOfEntryId && (
         <Button
           type="button"

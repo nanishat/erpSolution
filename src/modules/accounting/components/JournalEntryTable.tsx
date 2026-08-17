@@ -61,22 +61,28 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
                 <td className="px-3 py-2 text-right">{totalDebit.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{totalCredit.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
-                  {entry.status === "DRAFT" && (
-                    <>
-                      <Link
-                        href={`/accounting/journal-entries/${entry.id}/edit`}
-                        className="text-sm text-primary underline-offset-4 hover:underline"
-                      >
-                        Edit
-                      </Link>
-                      {entry.invoice ? (
-                        // No Invoice detail/list UI exists yet (API-only so
-                        // far) to link to — plain text until that page
-                        // ships, rather than a link that 404s.
-                        <span className="ml-2 text-sm text-muted-foreground">
-                          Belongs to Invoice {entry.invoice.invoiceNumber} — post it from there
-                        </span>
-                      ) : (
+                  {entry.status === "DRAFT" &&
+                    (entry.invoice ? (
+                      // No Invoice detail/list UI exists yet (API-only so
+                      // far) to link to — plain text until that page ships,
+                      // rather than a link that 404s. Neither Edit nor Post
+                      // is offered here: both are rejected at the service
+                      // layer for an invoice-linked entry (editing would
+                      // diverge its lines from Invoice.subtotal/lines,
+                      // posting would skip the Invoice status/Partner
+                      // balance update) — this is just reflecting that, not
+                      // the actual enforcement.
+                      <span className="text-sm text-muted-foreground">
+                        Belongs to Invoice {entry.invoice.invoiceNumber} — edit/post it from there
+                      </span>
+                    ) : (
+                      <>
+                        <Link
+                          href={`/accounting/journal-entries/${entry.id}/edit`}
+                          className="text-sm text-primary underline-offset-4 hover:underline"
+                        >
+                          Edit
+                        </Link>
                         <Button
                           type="button"
                           variant="ghost"
@@ -87,9 +93,8 @@ export function JournalEntryTable({ entries }: { entries: JournalEntryWithLines[
                         >
                           Post
                         </Button>
-                      )}
-                    </>
-                  )}
+                      </>
+                    ))}
                   {entry.status === "POSTED" && !entry.reversalOfEntryId && (
                     <Button
                       type="button"
