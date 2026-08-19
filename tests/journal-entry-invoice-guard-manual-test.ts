@@ -127,6 +127,7 @@ async function main() {
   const { json: accountsJson } = await api("/api/accounts");
   const accounts: { id: string; code: string; subType: string | null }[] = accountsJson.data;
   const salesRevenue = accounts.find((a) => a.code === "4010")!;
+  const operatingExpense = accounts.find((a) => a.code === "5010")!;
   const cashAccount = accounts.find((a) => a.code === "1010")!;
   check(
     "Cash account (1010) exists (run prisma/seed-coa.ts first if this fails)",
@@ -398,6 +399,14 @@ async function main() {
     listHtml.includes(`Belongs to Invoice`) && listHtml.includes(invoiceForEditTest.invoiceNumber),
     `looked for invoice note referencing ${invoiceForEditTest.invoiceNumber}`
   );
+  // The "Belongs to Invoice" note used to be plain text (no Invoice detail
+  // page existed to link to yet) — now that /accounting/invoices/[id] ships,
+  // it must be an actual link there, not just a mention of the number.
+  check(
+    "The 'Belongs to Invoice' note on the list page links to the real Customer Invoice detail page",
+    listHtml.includes(`href="/accounting/invoices/${invoiceForEditTest.id}"`),
+    `looked for href="/accounting/invoices/${invoiceForEditTest.id}"`
+  );
   // A DRAFT plain voucher was created above without ever posting it — reuse
   // a freshly created one here so there's a guaranteed-DRAFT, non-invoice
   // row to assert the Edit link/Post button ARE still rendered for.
@@ -433,6 +442,11 @@ async function main() {
       !appearsRendered(detailHtml, "Edit"),
     `looked for invoice note and absence of rendered ">Edit<"`
   );
+  check(
+    "The entry detail page's 'Belongs to Invoice' note links to the real Customer Invoice detail page",
+    detailHtml.includes(`href="/accounting/invoices/${invoiceForEditTest.id}"`),
+    `looked for href="/accounting/invoices/${invoiceForEditTest.id}"`
+  );
 
   const { html: editPageHtml } = await page(
     `/accounting/journal-entries/${invoiceForEditTest.journalEntryId}/edit`
@@ -446,6 +460,63 @@ async function main() {
       // <meta name="description" content="...">, which is always present.
       !editPageHtml.includes('id="description"'),
     `looked for rejection message and absence of the form's description field`
+  );
+  check(
+    "The edit page's rejection message links to the real Customer Invoice detail page",
+    editPageHtml.includes(`href="/accounting/invoices/${invoiceForEditTest.id}"`),
+    `looked for href="/accounting/invoices/${invoiceForEditTest.id}"`
+  );
+
+  // ============================================================
+  // 7. UI check: a VENDOR-direction invoice-linked entry links to
+  //    /accounting/vendor-bills, not /accounting/invoices
+  // ============================================================
+  console.log("\n--- UI: Belongs-to-Invoice link uses the vendor-bills basePath for direction: VENDOR ---");
+
+  const vendorProductService = await db.productService.create({
+    data: {
+      code: `TEST-JEGUARD-VEND-PS-${stamp}`,
+      name: `TEST JE Guard Vendor Service ${stamp}`,
+      type: "SERVICE",
+      unitPrice: 0,
+      incomeAccountId: salesRevenue.id, // required by schema, unused for VENDOR direction
+      expenseAccountId: operatingExpense.id,
+    },
+  });
+  const { json: vendorJson } = await api("/api/partners", {
+    method: "POST",
+    body: JSON.stringify({
+      type: "VENDOR",
+      name: `TEST JE Guard Vendor ${stamp}`,
+      tin: `TIN-JEGUARDV-${stamp}`,
+      bin: `BIN-JEGUARDV-${stamp}`,
+    }),
+  });
+  const vendor = vendorJson.data as { id: string };
+
+  const vendorBill = await createInvoiceViaSchema({
+    partnerId: vendor.id,
+    direction: "VENDOR",
+    branchId: branch.id,
+    date: new Date().toISOString(),
+    lines: [
+      {
+        productServiceId: vendorProductService.id,
+        description: "JE guard vendor bill test line",
+        quantity: 1,
+        unitPrice: 2000,
+      },
+    ],
+  });
+
+  const { html: vendorDetailHtml } = await page(
+    `/accounting/journal-entries/${vendorBill.journalEntryId}`
+  );
+  check(
+    "The vendor-bill-linked entry's detail page links to the real Vendor Bill detail page",
+    vendorDetailHtml.includes(`href="/accounting/vendor-bills/${vendorBill.id}"`) &&
+      !vendorDetailHtml.includes(`href="/accounting/invoices/${vendorBill.id}"`),
+    `looked for href="/accounting/vendor-bills/${vendorBill.id}"`
   );
 
   console.log(`\n=== ${pass} passed, ${fail} failed ===`);

@@ -148,10 +148,12 @@ const journalEntryInclude = {
     orderBy: { createdAt: "asc" },
   },
   // Surfaced so the UI can hide/disable the generic "Post" button on an
-  // invoice-linked entry and point to the Invoice instead — see
-  // JournalEntryMustPostViaInvoiceError for why posting it here directly is
-  // rejected at the service layer regardless of what the UI shows.
-  invoice: { select: { id: true, invoiceNumber: true } },
+  // invoice-linked entry and link to the Invoice/Vendor Bill detail page
+  // instead — see JournalEntryMustPostViaInvoiceError for why posting it
+  // here directly is rejected at the service layer regardless of what the
+  // UI shows. `direction` picks which of the two basePaths
+  // (/accounting/invoices vs /accounting/vendor-bills) that link should use.
+  invoice: { select: { id: true, invoiceNumber: true, direction: true } },
 } satisfies Prisma.JournalEntryInclude;
 
 type JournalEntryRow = Prisma.JournalEntryGetPayload<{

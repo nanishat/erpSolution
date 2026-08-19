@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { JournalEntryStatus } from "@prisma/client";
+import type { InvoiceDirection, JournalEntryStatus } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
 import { useJournalEntryActions } from "@/modules/accounting/hooks/useJournalEntryActions";
@@ -15,7 +15,12 @@ type JournalEntryActionsEntry = {
   documentNumber: string;
   status: JournalEntryStatus;
   reversalOfEntryId: string | null;
-  invoice: { id: string; invoiceNumber: string } | null;
+  invoice: { id: string; invoiceNumber: string; direction: InvoiceDirection } | null;
+};
+
+const INVOICE_BASE_PATH: Record<InvoiceDirection, string> = {
+  CUSTOMER: "/accounting/invoices",
+  VENDOR: "/accounting/vendor-bills",
 };
 
 export function JournalEntryDetailActions({ entry }: { entry: JournalEntryActionsEntry }) {
@@ -30,15 +35,21 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryAction
     <div className="flex gap-2">
       {entry.status === "DRAFT" &&
         (entry.invoice ? (
-          // No Invoice detail/list UI exists yet (API-only so far) to link
-          // to — plain text until that page ships, rather than a link that
-          // 404s. Neither Edit nor Post is offered here: both are rejected
-          // at the service layer for an invoice-linked entry (editing would
-          // diverge its lines from Invoice.subtotal/lines, posting would
-          // skip the Invoice status/Partner balance update) — this is just
-          // reflecting that, not the actual enforcement.
+          // Neither Edit nor Post is offered here: both are rejected at the
+          // service layer for an invoice-linked entry (editing would diverge
+          // its lines from Invoice.subtotal/lines, posting would skip the
+          // Invoice status/Partner balance update) — this link is just
+          // reflecting that, not the actual enforcement, so it points at the
+          // real Invoice/Vendor Bill detail page where those actions live.
           <p className="self-center text-sm text-muted-foreground">
-            Belongs to Invoice {entry.invoice.invoiceNumber} — edit/post it from there.
+            Belongs to Invoice{" "}
+            <Link
+              href={`${INVOICE_BASE_PATH[entry.invoice.direction]}/${entry.invoice.id}`}
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              {entry.invoice.invoiceNumber}
+            </Link>{" "}
+            — edit/post it from there.
           </p>
         ) : (
           <>
