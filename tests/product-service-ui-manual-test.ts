@@ -11,8 +11,7 @@
 // substring search for a created row's code would match even before it's
 // actually visible in the table. `appearsRendered` checks for the rendered
 // anchor text (`>value<`) instead, which only appears in the real
-// server-rendered DOM (see the same footgun documented in
-// tax-approval-queue-ui-manual-test.ts).
+// server-rendered DOM.
 //
 // Same conventions as the other manual scripts: doesn't clean up after
 // itself, safe to re-run, uses `TEST ... <timestamp>` naming.
