@@ -26,7 +26,7 @@ export default async function JournalEntryDetailPage({
   // Tax can only be attached before the entry is posted — once POSTED, the
   // real ledger lines already exist and adding tax after the fact would
   // require re-posting, which is out of scope here (see
-  // postApprovedTaxApplicationLines in tax-posting.service.ts).
+  // postTaxApplicationLines in tax-posting.service.ts).
   const [partners, vatRates] =
     entry.status === "DRAFT"
       ? await Promise.all([listPartners({ isActive: true }), listTaxRates({ type: "VAT" })])
@@ -135,7 +135,10 @@ export default async function JournalEntryDetailPage({
         </table>
       </div>
 
-      <JournalEntryTaxApplications taxApplications={entry.taxApplications} />
+      <JournalEntryTaxApplications
+        taxApplications={entry.taxApplications}
+        isDraft={entry.status === "DRAFT"}
+      />
 
       {entry.status === "DRAFT" && (
         <AddTaxApplicationForm journalEntryId={entry.id} partners={partners} vatRates={vatRates} />

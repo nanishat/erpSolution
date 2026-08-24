@@ -10,7 +10,6 @@ import {
   JournalEntryNotFoundError,
   JournalEntryNotPostedError,
   JournalEntryVoidError,
-  PendingTaxApprovalError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
 import {
@@ -45,7 +44,6 @@ export function invoiceErrorResponse(error: unknown): NextResponse {
     error instanceof InvoiceNotReversibleError ||
     error instanceof InvoicePaidCannotReverseError ||
     error instanceof InvoiceHasPaymentsError ||
-    error instanceof PendingTaxApprovalError ||
     // The linked JournalEntry is expected to be DRAFT/POSTED/found in
     // lockstep with its Invoice's own status (they're created and
     // transitioned together) — these only fire if that invariant is

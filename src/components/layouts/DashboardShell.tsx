@@ -35,7 +35,6 @@ const navItems: NavEntry[] = [
       { label: "Partners", href: "/accounting/partners" },
       { label: "Products & Services", href: "/accounting/product-services" },
       { label: "Tax Rates", href: "/accounting/tax-rates" },
-      { label: "Tax Approval Queue", href: "/accounting/tax-applications" },
     ],
   },
   { type: "link", label: "HR", href: "/hr" },

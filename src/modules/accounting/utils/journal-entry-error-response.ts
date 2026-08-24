@@ -12,7 +12,6 @@ import {
   JournalEntryNotFoundError,
   JournalEntryNotPostedError,
   JournalEntryVoidError,
-  PendingTaxApprovalError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
 import {
@@ -33,7 +32,6 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
     error instanceof JournalEntryNotPostedError ||
     error instanceof JournalEntryAlreadyReversedError ||
     error instanceof CannotReverseAReversalError ||
-    error instanceof PendingTaxApprovalError ||
     error instanceof JournalEntryMustPostViaInvoiceError ||
     error instanceof JournalEntryMustEditViaInvoiceError
   ) {

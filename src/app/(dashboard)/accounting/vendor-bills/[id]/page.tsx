@@ -140,7 +140,12 @@ export default async function VendorBillDetailPage({
         </div>
       </div>
 
-      {journalEntry && <JournalEntryTaxApplications taxApplications={journalEntry.taxApplications} />}
+      {journalEntry && (
+        <JournalEntryTaxApplications
+          taxApplications={journalEntry.taxApplications}
+          isDraft={invoice.journalEntry.status === "DRAFT"}
+        />
+      )}
 
       {invoice.journalEntry.status === "DRAFT" && (
         <AddTaxApplicationForm

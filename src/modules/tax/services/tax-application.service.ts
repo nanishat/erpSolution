@@ -1,40 +1,9 @@
-import { Prisma, type TaxApplication, type TaxComputationType } from "@prisma/client";
+import type { TaxApplication, TaxComputationType } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { JournalEntryNotFoundError } from "@/modules/accounting/services/journal-entry.service";
 import { PartnerNotFoundError } from "@/modules/partners/services/partner.service";
 import type { CreateTaxApplicationInput } from "@/modules/tax/validations/tax-application.schema";
-
-const taxApplicationListInclude = {
-  journalEntry: { select: { id: true, documentNumber: true } },
-  partner: { select: { id: true, name: true } },
-} satisfies Prisma.TaxApplicationInclude;
-
-type TaxApplicationListRow = Prisma.TaxApplicationGetPayload<{
-  include: typeof taxApplicationListInclude;
-}>;
-
-// ratePercent/baseAmount/taxAmount are Prisma Decimals, which React Server
-// Components can't pass to "use client" components ("Decimal objects are
-// not supported") — convert to plain numbers before this ever reaches
-// TaxApplicationTable, mirroring serializeProductService().
-export type TaxApplicationListItem = Omit<
-  TaxApplicationListRow,
-  "ratePercent" | "baseAmount" | "taxAmount"
-> & {
-  ratePercent: number;
-  baseAmount: number;
-  taxAmount: number;
-};
-
-function serializeTaxApplication(app: TaxApplicationListRow): TaxApplicationListItem {
-  return {
-    ...app,
-    ratePercent: Number(app.ratePercent),
-    baseAmount: Number(app.baseAmount),
-    taxAmount: Number(app.taxAmount),
-  };
-}
 
 export class TaxRateNotFoundError extends Error {
   constructor(id: string) {
@@ -76,7 +45,8 @@ export class PartnerTdsExemptError extends Error {
 export class JournalEntryNotDraftError extends Error {
   constructor(id: string, status: string) {
     super(
-      `Journal entry ${id} is ${status}, not DRAFT — tax applications can only be added to a draft entry`
+      `Journal entry ${id} is ${status}, not DRAFT — tax applications can only be added to or ` +
+        "removed from a draft entry"
     );
     this.name = "JournalEntryNotDraftError";
   }
@@ -86,13 +56,6 @@ export class TaxApplicationNotFoundError extends Error {
   constructor(id: string) {
     super(`Tax application ${id} not found`);
     this.name = "TaxApplicationNotFoundError";
-  }
-}
-
-export class TaxApplicationNotPendingError extends Error {
-  constructor(id: string, status: string) {
-    super(`Tax application ${id} is ${status}, not PENDING_REVIEW`);
-    this.name = "TaxApplicationNotPendingError";
   }
 }
 
@@ -114,21 +77,11 @@ function calculateTaxAmount(
   return roundCurrency(baseAmount * (ratePercent / 100));
 }
 
-// Newest first — the approval queue cares most about what just landed,
-// not chronological history.
-export async function listTaxApplications(): Promise<TaxApplicationListItem[]> {
-  const applications = await db.taxApplication.findMany({
-    include: taxApplicationListInclude,
-    orderBy: { createdAt: "desc" },
-  });
-  return applications.map(serializeTaxApplication);
-}
-
 /**
- * Creates a TaxApplication, always starting at PENDING_REVIEW regardless of
- * how cleanly the input validates — per the business requirement that all
- * tax needs manual review before it can gate a JournalEntry's posting (see
- * postJournalEntry in journal-entry.service.ts).
+ * Creates a TaxApplication attached directly to a DRAFT JournalEntry — its
+ * lines post automatically alongside the entry's own lines when the entry is
+ * posted (see postTaxApplicationLines in tax-posting.service.ts), same as
+ * any other line. No separate review/approval step.
  *
  * VAT looks up the picked TaxRate and denormalizes its ratePercent onto this
  * record — the TaxRate is not a live reference; editing/deactivating it
@@ -218,46 +171,33 @@ export async function createTaxApplication(
         computationType,
         baseAmount: input.baseAmount,
         taxAmount,
-        status: "PENDING_REVIEW",
         createdById: input.createdById,
       },
     });
   });
 }
 
-export async function approveTaxApplication(id: string): Promise<TaxApplication> {
+/**
+ * Removes a TaxApplication before it posts — the only way to correct a
+ * mistakenly-added one, since there is no review/reject step to fall back
+ * on. Only allowed while the parent JournalEntry is still DRAFT, same
+ * restriction as createTaxApplication: once posted, postTaxApplicationLines
+ * has already turned it into real JournalLines that this would silently
+ * orphan.
+ */
+export async function deleteTaxApplication(id: string): Promise<TaxApplication> {
   return db.$transaction(async (tx) => {
-    const existing = await tx.taxApplication.findUnique({ where: { id } });
+    const existing = await tx.taxApplication.findUnique({
+      where: { id },
+      include: { journalEntry: { select: { id: true, status: true } } },
+    });
     if (!existing) {
       throw new TaxApplicationNotFoundError(id);
     }
-    if (existing.status !== "PENDING_REVIEW") {
-      throw new TaxApplicationNotPendingError(id, existing.status);
+    if (existing.journalEntry.status !== "DRAFT") {
+      throw new JournalEntryNotDraftError(existing.journalEntry.id, existing.journalEntry.status);
     }
 
-    return tx.taxApplication.update({
-      where: { id },
-      data: { status: "APPROVED" },
-    });
-  });
-}
-
-export async function rejectTaxApplication(
-  id: string,
-  reason?: string
-): Promise<TaxApplication> {
-  return db.$transaction(async (tx) => {
-    const existing = await tx.taxApplication.findUnique({ where: { id } });
-    if (!existing) {
-      throw new TaxApplicationNotFoundError(id);
-    }
-    if (existing.status !== "PENDING_REVIEW") {
-      throw new TaxApplicationNotPendingError(id, existing.status);
-    }
-
-    return tx.taxApplication.update({
-      where: { id },
-      data: { status: "REJECTED", rejectionReason: reason },
-    });
+    return tx.taxApplication.delete({ where: { id } });
   });
 }

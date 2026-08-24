@@ -34,8 +34,9 @@ const emptyValues: AddTaxApplicationFormValues = {
  * Attaches a new TaxApplication to a DRAFT journal entry — the missing
  * connective tissue between voucher creation and the tax engine (Phase 2
  * previously had no UI path here at all, only POST /api/tax-applications
- * called directly by tests). Always lands PENDING_REVIEW; approving/
- * rejecting happens on the separate approval queue page.
+ * called directly by tests). Its lines post automatically with the rest of
+ * the entry once posted; a mistakenly-added one can be removed with
+ * RemoveTaxApplicationButton while the entry is still DRAFT.
  */
 export function AddTaxApplicationForm({
   journalEntryId,

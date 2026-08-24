@@ -1,11 +1,12 @@
-import Link from "next/link";
-
 import type { JournalEntryWithLines } from "@/modules/accounting/services/journal-entry.service";
+import { RemoveTaxApplicationButton } from "@/modules/tax/components/RemoveTaxApplicationButton";
 
 export function JournalEntryTaxApplications({
   taxApplications,
+  isDraft,
 }: {
   taxApplications: JournalEntryWithLines["taxApplications"];
+  isDraft: boolean;
 }) {
   if (taxApplications.length === 0) {
     return null;
@@ -13,15 +14,7 @@ export function JournalEntryTaxApplications({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">Tax</h2>
-        <Link
-          href="/accounting/tax-applications"
-          className="text-xs text-primary underline-offset-4 hover:underline"
-        >
-          Go to approval queue
-        </Link>
-      </div>
+      <h2 className="text-sm font-medium">Tax</h2>
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead className="bg-muted text-left text-muted-foreground">
@@ -32,7 +25,7 @@ export function JournalEntryTaxApplications({
               <th className="px-3 py-2 text-right">Rate %</th>
               <th className="px-3 py-2 text-right">Base amount</th>
               <th className="px-3 py-2 text-right">Tax amount</th>
-              <th className="px-3 py-2">Status</th>
+              {isDraft && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -49,12 +42,11 @@ export function JournalEntryTaxApplications({
                 <td className="px-3 py-2 text-right">{Number(app.ratePercent).toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{Number(app.baseAmount).toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{Number(app.taxAmount).toFixed(2)}</td>
-                <td className="px-3 py-2">
-                  {app.status}
-                  {app.status === "REJECTED" && app.rejectionReason && (
-                    <div className="text-xs text-muted-foreground">{app.rejectionReason}</div>
-                  )}
-                </td>
+                {isDraft && (
+                  <td className="px-3 py-2 text-right">
+                    <RemoveTaxApplicationButton id={app.id} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

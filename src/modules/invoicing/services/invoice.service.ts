@@ -531,32 +531,29 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceW
  * reached through this function.
  *
  * Delegates all ledger-side validation to the existing postInvoiceLinkedJournalEntry
- * (balance check, active-account check, and — critically — the tax approval
- * gate: PendingTaxApprovalError if any linked TaxApplication is still
- * PENDING_REVIEW) rather than reimplementing any of it, for both directions
- * alike — the check is generic over the JournalEntry, not direction-aware.
- * postInvoiceLinkedJournalEntry (not the plain postJournalEntry vouchers
- * use) specifically because this invoice's JournalEntry is invoice-linked:
- * postJournalEntry rejects any invoice-linked entry outright
- * (JournalEntryMustPostViaInvoiceError) to stop it being posted through any
- * OTHER path and silently skipping everything below — this IS that
- * sanctioned path, so it opts back in. Its rejection propagates unchanged
- * and, since everything below runs inside one transaction, rolls back
- * cleanly: the Invoice stays DRAFT and neither Partner balance field is
- * touched.
+ * (balance check, active-account check) rather than reimplementing any of
+ * it, for both directions alike — the check is generic over the
+ * JournalEntry, not direction-aware. postInvoiceLinkedJournalEntry (not the
+ * plain postJournalEntry vouchers use) specifically because this invoice's
+ * JournalEntry is invoice-linked: postJournalEntry rejects any
+ * invoice-linked entry outright (JournalEntryMustPostViaInvoiceError) to
+ * stop it being posted through any OTHER path and silently skipping
+ * everything below — this IS that sanctioned path, so it opts back in. Its
+ * rejection propagates unchanged and, since everything below runs inside
+ * one transaction, rolls back cleanly: the Invoice stays DRAFT and neither
+ * Partner balance field is touched.
  *
  * taxTotal/grandTotal are (re)computed here, right before posting, from the
- * sum of every APPROVED TaxApplication on the invoice's JournalEntry —
- * deliberately at posting time rather than at tax-approval time:
- * createTaxApplication only accepts a still-DRAFT JournalEntry
- * (JournalEntryNotDraftError otherwise), and postInvoiceLinkedJournalEntry
- * above just flipped this one to POSTED, so no further TaxApplication can ever attach
- * to it — every APPROVED one that will ever exist for this invoice is
- * already final by this point. This also keeps tax-application.service.ts
- * (shared by vouchers and invoices alike) unaware of the Invoice model
- * entirely, rather than reaching into it from tax approval. An invoice
- * posted with no approved tax simply sums to 0, leaving grandTotal ==
- * subtotal — unchanged from today's behavior.
+ * sum of every TaxApplication on the invoice's JournalEntry — deliberately
+ * at posting time rather than at tax-creation time: createTaxApplication
+ * only accepts a still-DRAFT JournalEntry (JournalEntryNotDraftError
+ * otherwise), and postInvoiceLinkedJournalEntry above just flipped this one
+ * to POSTED, so no further TaxApplication can ever attach to it — every one
+ * that will ever exist for this invoice is already final by this point.
+ * This also keeps tax-application.service.ts (shared by vouchers and
+ * invoices alike) unaware of the Invoice model entirely. An invoice posted
+ * with no tax simply sums to 0, leaving grandTotal == subtotal —
+ * unchanged from today's behavior.
  *
  * On success, increments exactly ONE Partner balance field with the freshly
  * computed grandTotal (subtotal + taxTotal), per the locked isolation
@@ -581,12 +578,12 @@ export async function postInvoice(id: string): Promise<InvoiceWithLines> {
 
     await postInvoiceLinkedJournalEntry(invoice.journalEntryId, tx);
 
-    const approvedTaxApplications = await tx.taxApplication.findMany({
-      where: { journalEntryId: invoice.journalEntryId, status: "APPROVED" },
+    const taxApplications = await tx.taxApplication.findMany({
+      where: { journalEntryId: invoice.journalEntryId },
       select: { taxAmount: true },
     });
     const taxTotal = roundCurrency(
-      approvedTaxApplications.reduce((sum, application) => sum + Number(application.taxAmount), 0)
+      taxApplications.reduce((sum, application) => sum + Number(application.taxAmount), 0)
     );
     const grandTotal = roundCurrency(Number(invoice.subtotal) + taxTotal);
 

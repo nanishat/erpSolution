@@ -6,7 +6,7 @@ import type {
   JournalEntryInput,
   UpdateJournalEntryInput,
 } from "@/modules/accounting/validations/journal-entry.schema";
-import { postApprovedTaxApplicationLines } from "@/modules/tax/services/tax-posting.service";
+import { postTaxApplicationLines } from "@/modules/tax/services/tax-posting.service";
 
 export class BranchNotFoundError extends Error {
   constructor(id: string) {
@@ -87,15 +87,6 @@ export class JournalEntryNotDraftForVoidError extends Error {
         "this way; a POSTED entry must go through reverseJournalEntry instead"
     );
     this.name = "JournalEntryNotDraftForVoidError";
-  }
-}
-
-export class PendingTaxApprovalError extends Error {
-  constructor(id: string) {
-    super(
-      `Journal entry ${id} has a tax application still PENDING_REVIEW and cannot be posted until it is approved or rejected`
-    );
-    this.name = "PendingTaxApprovalError";
   }
 }
 
@@ -555,24 +546,13 @@ async function postJournalEntryWithClient(
     throw new InactiveAccountJournalLineError(inactiveLine.accountId);
   }
 
-  // Approval gates posting, not the reverse (confirmed business rule) — any
-  // tax application still awaiting review blocks the entry from posting.
-  const pendingTaxApplication = await tx.taxApplication.findFirst({
-    where: { journalEntryId: entryId, status: "PENDING_REVIEW" },
-    select: { id: true },
-  });
-  if (pendingTaxApplication) {
-    throw new PendingTaxApprovalError(entryId);
-  }
-
-  // Adds the JournalLine pair for every APPROVED tax application on this
-  // entry (VAT Payable/Receivable, TDS/VDS Payable) before posting — see
-  // postApprovedTaxApplicationLines. Runs here rather than at the moment of
-  // approval so a still-DRAFT entry (which may yet be edited wholesale via
+  // Adds the JournalLine pair for every tax application on this entry (VAT
+  // Payable/Receivable, TDS/VDS Payable) right before posting — see
+  // postTaxApplicationLines. Runs here, not at TaxApplication creation time,
+  // so a still-DRAFT entry (which may yet be edited wholesale via
   // updateJournalEntry, which deletes and recreates all lines) never carries
-  // tax lines that could be silently wiped out from under an already-APPROVED
-  // TaxApplication.
-  await postApprovedTaxApplicationLines(tx, entry);
+  // tax lines that could be silently wiped out from under a TaxApplication.
+  await postTaxApplicationLines(tx, entry);
 
   const posted = await tx.journalEntry.update({
     where: { id: entryId },

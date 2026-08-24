@@ -6,7 +6,6 @@ import {
   JournalEntryNotDraftError,
   PartnerTdsExemptError,
   TaxApplicationNotFoundError,
-  TaxApplicationNotPendingError,
   TaxRateDirectionMismatchError,
   TaxRateInactiveError,
   TaxRateNotFoundError,
@@ -14,9 +13,9 @@ import {
 } from "@/modules/tax/services/tax-application.service";
 
 export function taxApplicationErrorResponse(error: unknown): NextResponse {
-  // TaxApplicationNotFoundError is the primary resource for approve/reject
-  // (404). JournalEntry/Partner/TaxRate not-found here are references given
-  // as *input* to a create call, not the primary resource — same convention
+  // TaxApplicationNotFoundError is the primary resource for delete (404).
+  // JournalEntry/Partner/TaxRate not-found here are references given as
+  // *input* to a create call, not the primary resource — same convention
   // as PartnerLocalBranchNotFoundError in partner-error-response.ts (400).
   if (error instanceof TaxApplicationNotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
@@ -28,11 +27,7 @@ export function taxApplicationErrorResponse(error: unknown): NextResponse {
   ) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
-  if (
-    error instanceof TaxApplicationNotPendingError ||
-    error instanceof PartnerTdsExemptError ||
-    error instanceof JournalEntryNotDraftError
-  ) {
+  if (error instanceof PartnerTdsExemptError || error instanceof JournalEntryNotDraftError) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }
   if (

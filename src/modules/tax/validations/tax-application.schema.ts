@@ -57,9 +57,4 @@ export const createTaxApplicationSchema = z.discriminatedUnion("taxType", [
   vdsTaxApplicationSchema,
 ]);
 
-export const rejectTaxApplicationSchema = z.object({
-  reason: z.string().trim().min(1).optional(),
-});
-
 export type CreateTaxApplicationInput = z.infer<typeof createTaxApplicationSchema>;
-export type RejectTaxApplicationInput = z.infer<typeof rejectTaxApplicationSchema>;

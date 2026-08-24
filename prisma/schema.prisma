@@ -459,8 +459,9 @@ model TaxRate {
 
 // Records the actual tax applied to a transaction. ratePercent is captured
 // (denormalized) at entry time rather than looked up live from TaxRate, so
-// historical accuracy holds even after the TaxRate list changes later.
-// Schema only for now — no calculation logic or approval workflow yet.
+// historical accuracy holds even after the TaxRate list changes later. Tax
+// lines compute automatically and post as part of the parent JournalEntry's
+// normal Draft->Posted flow — there is no separate approval/review state.
 model TaxApplication {
   id String @id @default(cuid())
 
@@ -491,11 +492,6 @@ model TaxApplication {
   baseAmount Decimal @db.Decimal(18, 2) // amount tax is calculated on
   taxAmount  Decimal @db.Decimal(18, 2) // calculated result
 
-  // Per business requirement: "tax is auto-calculated but held for manual
-  // review/approval before posting to the ledger"
-  status          TaxApplicationStatus @default(PENDING_REVIEW)
-  rejectionReason String? // set when status transitions to REJECTED; otherwise null
-
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -503,7 +499,6 @@ model TaxApplication {
 
   @@index([journalEntryId])
   @@index([partnerId])
-  @@index([status])
 }
 
 enum AccountType {
@@ -593,10 +588,4 @@ enum TaxComputationType {
 enum TaxDirection {
   INPUT // purchases
   OUTPUT // sales
-}
-
-enum TaxApplicationStatus {
-  PENDING_REVIEW
-  APPROVED
-  REJECTED
 }

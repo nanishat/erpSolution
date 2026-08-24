@@ -120,26 +120,24 @@ function getTaxPostingRule(taxType: TaxType, direction: TaxDirection | null): Ta
 }
 
 /**
- * Adds the JournalLine pair for every APPROVED TaxApplication on this entry,
- * called from postJournalEntryWithClient right before it flips the entry to
- * POSTED (posting is already gated on no PENDING_REVIEW tax applications
- * remaining — see PendingTaxApprovalError). Each tax application contributes
- * exactly two new lines: one on its resolved settlement line's account (the
- * existing cash/bank/AR/AP leg of the transaction) and one on the tax
- * account (VAT Payable/Receivable, TDS/VDS Payable) — always an
- * equal-and-opposite pair, so the entry's overall balance is preserved
- * without needing to touch its original lines.
+ * Adds the JournalLine pair for every TaxApplication on this entry, called
+ * from postJournalEntryWithClient right before it flips the entry to
+ * POSTED. Each tax application contributes exactly two new lines: one on
+ * its resolved settlement line's account (the existing cash/bank/AR/AP leg
+ * of the transaction) and one on the tax account (VAT Payable/Receivable,
+ * TDS/VDS Payable) — always an equal-and-opposite pair, so the entry's
+ * overall balance is preserved without needing to touch its original lines.
  *
  * Settlement line resolution is by account subType + side on the entry's
  * ORIGINAL lines (not lines added by a prior tax application in this same
  * call) — requires exactly one match per tax application, or throws.
  */
-export async function postApprovedTaxApplicationLines(
+export async function postTaxApplicationLines(
   tx: Prisma.TransactionClient,
   entry: JournalEntryForTaxPosting
 ): Promise<void> {
   const taxApplications = await tx.taxApplication.findMany({
-    where: { journalEntryId: entry.id, status: "APPROVED" },
+    where: { journalEntryId: entry.id },
   });
   if (taxApplications.length === 0) {
     return;
