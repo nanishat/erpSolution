@@ -19,6 +19,7 @@ model User {
   productServices ProductService[]
   invoices        Invoice[]
   payments        Payment[]
+  fixedAssets     FixedAsset[]
 }
 
 model Branch {
@@ -34,6 +35,7 @@ model Branch {
   vendorBillDocumentSequences VendorBillDocumentSequence[]
   localPartners               Partner[]
   invoices                    Invoice[]
+  fixedAssets                 FixedAsset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,6 +180,14 @@ model ChartOfAccount {
   incomeProductServices  ProductService[] @relation("ProductServiceIncomeAccount")
   expenseProductServices ProductService[] @relation("ProductServiceExpenseAccount")
 
+  // Fixed asset register — three distinct roles a ChartOfAccount can play
+  // for a FixedAsset row (the asset's own balance-sheet head, the contra-
+  // asset accumulated depreciation account, and the P&L depreciation
+  // expense account). See FixedAsset below.
+  fixedAssetsAsAsset               FixedAsset[] @relation("FixedAssetAccount")
+  fixedAssetsAsAccumDepreciation   FixedAsset[] @relation("FixedAssetAccumDepreciation")
+  fixedAssetsAsDepreciationExpense FixedAsset[] @relation("FixedAssetDepreciationExpense")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -241,6 +251,7 @@ model Partner {
 
   taxApplications TaxApplication[]
   invoices        Invoice[]
+  fixedAssets     FixedAsset[]
 
   // Full reconciliation (multi-invoice allocation, bank statement matching)
   // still deferred to Phase 4 — this is just the back-relation for the
@@ -501,6 +512,70 @@ model TaxApplication {
   @@index([partnerId])
 }
 
+// Fixed asset register — Phase 4.5. Records what's owned and its
+// depreciation parameters so a future depreciation-posting service has
+// something to run against. Schema only for now: no service/API/UI layer,
+// no depreciation calculation logic yet, matching how ChartOfAccount/
+// Partner/TaxRate/ProductService were each introduced schema-first.
+model FixedAsset {
+  id          String  @id @default(cuid())
+  code        String  @unique // asset tag/register number
+  name        String
+  description String?
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  // The ChartOfAccount this asset's value rolls up to on the balance sheet
+  // (the "Sundry/Fixed Assets" head or a relevant sub-account). Neither that
+  // head nor an Accumulated Depreciation account exists in ChartOfAccount
+  // yet (see PROJECT_NOTES.md) — one must be created before any real
+  // FixedAsset row can be inserted, since all three account FKs below are
+  // required.
+  assetAccountId String
+  assetAccount   ChartOfAccount @relation("FixedAssetAccount", fields: [assetAccountId], references: [id])
+
+  // Where accumulated depreciation posts — separate contra-asset account,
+  // required now even though depreciation posting isn't built yet, since
+  // the register needs to know where it WILL post.
+  accumulatedDepreciationAccountId String
+  accumulatedDepreciationAccount   ChartOfAccount @relation("FixedAssetAccumDepreciation", fields: [accumulatedDepreciationAccountId], references: [id])
+
+  // Where periodic depreciation expense posts.
+  depreciationExpenseAccountId String
+  depreciationExpenseAccount   ChartOfAccount @relation("FixedAssetDepreciationExpense", fields: [depreciationExpenseAccountId], references: [id])
+
+  acquisitionDate    DateTime
+  acquisitionCost    Decimal  @db.Decimal(18, 2)
+  salvageValue       Decimal  @default(0) @db.Decimal(18, 2)
+  usefulLifeMonths   Int // in months, for flexibility — not all assets have
+  // whole-year useful lives
+
+  depreciationMethod DepreciationMethod @default(STRAIGHT_LINE)
+
+  // Denormalized running total — updated by future depreciation posting
+  // logic, not computed live, same pattern as Partner.outstandingBalance.
+  accumulatedDepreciation Decimal @default(0) @db.Decimal(18, 2)
+
+  status           AssetStatus @default(ACTIVE)
+  disposalDate     DateTime?
+  disposalProceeds Decimal?    @db.Decimal(18, 2)
+
+  partnerId String? // optional: vendor this was purchased from, if relevant
+  partner   Partner? @relation(fields: [partnerId], references: [id])
+
+  isActive Boolean @default(true)
+
+  createdById Int?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([status])
+  @@index([assetAccountId])
+}
+
 enum AccountType {
   ASSET
   LIABILITY
@@ -588,4 +663,15 @@ enum TaxComputationType {
 enum TaxDirection {
   INPUT // purchases
   OUTPUT // sales
+}
+
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  REDUCING_BALANCE
+}
+
+enum AssetStatus {
+  ACTIVE
+  DISPOSED
+  FULLY_DEPRECIATED
 }
