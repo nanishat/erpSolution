@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import {
+  BankDetailsRequiredError,
+  CashBankAccountNotFoundError,
+} from "@/modules/accounting/services/debit-voucher.service";
+import {
   BranchNotFoundError,
   CannotReverseAReversalError,
   InactiveAccountJournalLineError,
@@ -41,6 +45,8 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
     error instanceof UnbalancedJournalEntryError ||
     error instanceof InactiveAccountJournalLineError ||
     error instanceof BranchNotFoundError ||
+    error instanceof CashBankAccountNotFoundError ||
+    error instanceof BankDetailsRequiredError ||
     error instanceof TaxAccountNotConfiguredError ||
     error instanceof TaxSettlementLineNotFoundError ||
     error instanceof TaxSettlementLineAmbiguousError ||

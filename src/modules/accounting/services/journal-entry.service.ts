@@ -126,7 +126,7 @@ export class JournalEntryMustEditViaInvoiceError extends Error {
   }
 }
 
-const journalEntryInclude = {
+export const journalEntryInclude = {
   branch: { select: { id: true, name: true, code: true } },
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
   reversalOfEntry: { select: { id: true, documentNumber: true } },
@@ -176,7 +176,7 @@ export type JournalEntryWithLines = Omit<JournalEntryRow, "lines" | "taxApplicat
   })[];
 };
 
-function serializeJournalEntry(entry: JournalEntryRow): JournalEntryWithLines {
+export function serializeJournalEntry(entry: JournalEntryRow): JournalEntryWithLines {
   return {
     ...entry,
     lines: entry.lines.map((line) => ({

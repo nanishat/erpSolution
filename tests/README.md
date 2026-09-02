@@ -369,3 +369,33 @@ through `createInvoice` directly (no API/UI layer yet, same deviation as the
 other Phase 3 invoice scripts) and posting through the real
 `POST /api/invoices/[id]/post`. Same no-cleanup convention and
 `TEST ... <timestamp>` naming as the other scripts.
+
+### `debit-voucher-manual-test.ts`
+
+Covers the Debit Voucher multi-line + bank-detail-fields feature
+(`debit-voucher.service.ts`, `POST /api/debit-vouchers`): up to 5 debit
+lines against distinct expense/payable accounts, sharing one consolidated
+credit line against a single Cash/Bank account, with `bankName`/`chequeNo`/
+`chequeDate` on `JournalEntry` required if and only if that Cash/Bank
+account's `AccountSubType` is `BANK` (checked server-side against the DB in
+`createDebitVoucher`, not just client-side).
+
+- Creating a voucher with 3 lines against 3 different expense accounts and a
+  shared **Bank**-type account (`1020`) with bank fields filled: exactly 4
+  `JournalLine`s (3 debit + 1 credit), the debit sum equals the credit
+  amount, the credit line is against the shared Bank account, `bankName`/
+  `chequeNo`/`chequeDate` round-trip correctly, and the voucher posts
+  successfully via the existing `POST /api/journal-entries/[id]/post`
+- Same shape against a **Cash**-type account (`1010`) with no bank fields
+  supplied: `bankName`/`chequeNo`/`chequeDate` all persist as `null`, and the
+  voucher still posts correctly
+- Guard proof: submitting a **Bank**-type account without bank fields is
+  rejected with `400` (`BankDetailsRequiredError`), and no `JournalEntry` row
+  is left behind for the rejected attempt
+
+Two extra `OPERATING_EXPENSE` fixtures are created through the existing
+`POST /api/accounts` route (same convention as
+`product-service-manual-test.ts`) since the seeded Chart of Accounts only
+has one expense account (`5010`). Branch is read directly via Prisma (same
+deviation as `phase1-ledger-manual-test.ts`). Same no-cleanup convention and
+`TEST ... <timestamp>` naming as the other scripts.
