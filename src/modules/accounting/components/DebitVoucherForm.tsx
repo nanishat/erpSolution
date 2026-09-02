@@ -13,10 +13,13 @@ type LineState = {
   expenseAccountId: string;
   amount: string;
   description: string;
+  bankName: string;
+  chequeNo: string;
+  chequeDate: string;
 };
 
 function emptyLine(): LineState {
-  return { expenseAccountId: "", amount: "", description: "" };
+  return { expenseAccountId: "", amount: "", description: "", bankName: "", chequeNo: "", chequeDate: "" };
 }
 
 // Debit Voucher records a payment/expense: 1-5 debit lines (Expense/Payable
@@ -45,9 +48,6 @@ export function DebitVoucherForm({
   const [cashBankAccountId, setCashBankAccountId] = useState(
     cashBankAccounts.length === 1 ? cashBankAccounts[0].id : ""
   );
-  const [bankName, setBankName] = useState("");
-  const [chequeNo, setChequeNo] = useState("");
-  const [chequeDate, setChequeDate] = useState("");
   const [lines, setLines] = useState<LineState[]>([emptyLine()]);
 
   const isBankAccount = cashBankAccounts.find((a) => a.id === cashBankAccountId)?.subType === "BANK";
@@ -57,9 +57,7 @@ export function DebitVoucherForm({
     setCashBankAccountId(id);
     const account = cashBankAccounts.find((a) => a.id === id);
     if (account?.subType !== "BANK") {
-      setBankName("");
-      setChequeNo("");
-      setChequeDate("");
+      setLines((prev) => prev.map((line) => ({ ...line, bankName: "", chequeNo: "", chequeDate: "" })));
     }
   };
 
@@ -80,7 +78,7 @@ export function DebitVoucherForm({
     Boolean(branchId) &&
     description.trim().length > 0 &&
     lines.every((line) => line.expenseAccountId && Number(line.amount) > 0) &&
-    (!isBankAccount || (bankName.trim() && chequeNo.trim() && chequeDate));
+    (!isBankAccount || lines.every((line) => line.bankName.trim() && line.chequeNo.trim() && line.chequeDate));
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -107,10 +105,10 @@ export function DebitVoucherForm({
         setFormError("Every line amount must be greater than zero.");
         return;
       }
-    }
-    if (isBankAccount && (!bankName.trim() || !chequeNo.trim() || !chequeDate)) {
-      setFormError("Bank Name, Cheque No, and Cheque Date are required for a Bank account.");
-      return;
+      if (isBankAccount && (!line.bankName.trim() || !line.chequeNo.trim() || !line.chequeDate)) {
+        setFormError("Bank Name, Cheque No, and Cheque Date are required on every line for a Bank account.");
+        return;
+      }
     }
 
     const payload = {
@@ -122,10 +120,14 @@ export function DebitVoucherForm({
         expenseAccountId: line.expenseAccountId,
         amount: Number(line.amount),
         description: line.description.trim() || undefined,
+        ...(isBankAccount
+          ? {
+              bankName: line.bankName.trim(),
+              chequeNo: line.chequeNo.trim(),
+              chequeDate: new Date(line.chequeDate),
+            }
+          : {}),
       })),
-      ...(isBankAccount
-        ? { bankName: bankName.trim(), chequeNo: chequeNo.trim(), chequeDate: new Date(chequeDate) }
-        : {}),
     };
 
     startTransition(async () => {
@@ -210,47 +212,6 @@ export function DebitVoucherForm({
         </select>
       </div>
 
-      {isBankAccount && (
-        <div className="grid gap-4 rounded-md border border-border p-3 sm:grid-cols-3">
-          <div>
-            <label className="text-sm font-medium" htmlFor="bankName">
-              Drawn On (Bank Name)
-            </label>
-            <input
-              id="bankName"
-              type="text"
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="chequeNo">
-              Cash/Cheque No
-            </label>
-            <input
-              id="chequeNo"
-              type="text"
-              value={chequeNo}
-              onChange={(e) => setChequeNo(e.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="chequeDate">
-              Dated
-            </label>
-            <input
-              id="chequeDate"
-              type="date"
-              value={chequeDate}
-              onChange={(e) => setChequeDate(e.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-          </div>
-        </div>
-      )}
-
       <div className="space-y-3">
         {lines.map((line, index) => (
           <div key={index} className="space-y-2 rounded-md border border-border p-3">
@@ -301,6 +262,38 @@ export function DebitVoucherForm({
                 />
               </div>
             </div>
+
+            {isBankAccount && (
+              <div className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
+                <div>
+                  <label className="text-sm font-medium">Drawn On (Bank Name)</label>
+                  <input
+                    type="text"
+                    value={line.bankName}
+                    onChange={(e) => updateLine(index, { bankName: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Cash/Cheque No</label>
+                  <input
+                    type="text"
+                    value={line.chequeNo}
+                    onChange={(e) => updateLine(index, { chequeNo: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Dated</label>
+                  <input
+                    type="date"
+                    value={line.chequeDate}
+                    onChange={(e) => updateLine(index, { chequeDate: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

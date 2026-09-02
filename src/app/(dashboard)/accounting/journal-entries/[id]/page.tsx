@@ -97,23 +97,6 @@ export default async function JournalEntryDetailPage({
         </div>
       </div>
 
-      {(entry.bankName || entry.chequeNo || entry.chequeDate) && (
-        <div className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-3">
-          <div>
-            <div className="text-xs text-muted-foreground">Drawn On</div>
-            <div className="text-sm">{entry.bankName ?? "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">Cash/Cheque No</div>
-            <div className="text-sm">{entry.chequeNo ?? "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">Dated</div>
-            <div className="text-sm">{entry.chequeDate ? entry.chequeDate.toLocaleDateString() : "—"}</div>
-          </div>
-        </div>
-      )}
-
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
           <thead className="bg-muted text-left text-muted-foreground">
@@ -129,7 +112,15 @@ export default async function JournalEntryDetailPage({
             {entry.lines.map((line) => (
               <tr key={line.id} className="border-t border-border">
                 <td className="px-3 py-2">
-                  {line.account.code} — {line.account.name}
+                  <div>
+                    {line.account.code} — {line.account.name}
+                  </div>
+                  {(line.bankName || line.chequeNo || line.chequeDate) && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {line.bankName ?? "—"} · Cheque {line.chequeNo ?? "—"} ·{" "}
+                      {line.chequeDate ? line.chequeDate.toLocaleDateString() : "—"}
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   {line.branchId === entry.branchId ? "—" : `${line.branch.name} (${line.branch.code})`}

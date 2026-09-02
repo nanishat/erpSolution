@@ -51,15 +51,6 @@ model JournalEntry {
   documentNumber String             @unique
   lines          JournalLine[]
 
-  // Debit Voucher header-level bank detail fields — populated only when
-  // voucherType is DEBIT_VOUCHER and the voucher's shared Cash/Bank Account
-  // resolves to an AccountSubType.BANK account (see createDebitVoucher in
-  // debit-voucher.service.ts). Not on JournalLine: these describe the one
-  // shared Cash/Bank account for the whole voucher, not any individual line.
-  bankName   String?
-  chequeNo   String?
-  chequeDate DateTime?
-
   branchId    String
   branch      Branch   @relation(fields: [branchId], references: [id])
   createdById String
@@ -102,6 +93,16 @@ model JournalLine {
   debit  Decimal @default(0) @db.Decimal(18, 2)
   credit Decimal @default(0) @db.Decimal(18, 2)
   memo   String?
+
+  // Debit Voucher per-line bank detail fields — populated only on a DEBIT
+  // line (never the consolidated credit line) of a DEBIT_VOUCHER JournalEntry
+  // whose shared Cash/Bank Account resolves to an AccountSubType.BANK account
+  // (see createDebitVoucher in debit-voucher.service.ts). Per-line rather
+  // than on JournalEntry because each bill/line may be paid via a different
+  // cheque drawn on that same shared account.
+  bankName   String?
+  chequeNo   String?
+  chequeDate DateTime?
 
   @@index([journalEntryId])
   @@index([accountId])

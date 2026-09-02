@@ -35,13 +35,13 @@ type JournalLine = {
   debit: number | string;
   credit: number | string;
   memo: string | null;
+  bankName: string | null;
+  chequeNo: string | null;
+  chequeDate: string | null;
 };
 type JournalEntryDetail = {
   id: string;
   status: string;
-  bankName: string | null;
-  chequeNo: string | null;
-  chequeDate: string | null;
   lines: JournalLine[];
 };
 
@@ -100,19 +100,39 @@ async function main() {
   const expense3 = await createExpenseAccount(`TEST-DV-${stamp}-2`, `TEST Travel Expense ${stamp}`);
   console.log(`Created expense fixtures ${expense2.code}, ${expense3.code}`);
 
-  // --- 1. Debit Voucher: 3 lines against 3 different expense accounts, shared Bank account ---
+  // --- 1. Debit Voucher: 3 lines against 3 different expense accounts, shared Bank account.
+  // Each line carries its own Cheque No / Cheque Date (same Bank Name, since it's the same
+  // underlying account) — bank details are per-line, cheque details vary per bill. ---
   const { res: bankRes, json: bankJson } = await createDebitVoucher({
     date: new Date().toISOString(),
     branchId: branch.id,
     description: "TEST: Multi-line expense payment via bank",
     cashBankAccountId: bank.id,
-    bankName: "TEST Bank Ltd",
-    chequeNo: `CHQ-${stamp}`,
-    chequeDate: new Date().toISOString(),
     lines: [
-      { expenseAccountId: operatingExpenses.id, amount: 100, description: "Line 1 expense" },
-      { expenseAccountId: expense2.id, amount: 250, description: "Line 2 expense" },
-      { expenseAccountId: expense3.id, amount: 75, description: "Line 3 expense" },
+      {
+        expenseAccountId: operatingExpenses.id,
+        amount: 100,
+        description: "Line 1 expense",
+        bankName: "TEST Bank Ltd",
+        chequeNo: `CHQ-${stamp}-1`,
+        chequeDate: new Date("2026-09-01").toISOString(),
+      },
+      {
+        expenseAccountId: expense2.id,
+        amount: 250,
+        description: "Line 2 expense",
+        bankName: "TEST Bank Ltd",
+        chequeNo: `CHQ-${stamp}-2`,
+        chequeDate: new Date("2026-09-02").toISOString(),
+      },
+      {
+        expenseAccountId: expense3.id,
+        amount: 75,
+        description: "Line 3 expense",
+        bankName: "TEST Bank Ltd",
+        chequeNo: `CHQ-${stamp}-3`,
+        chequeDate: new Date("2026-09-03").toISOString(),
+      },
     ],
   });
   check("Create Debit Voucher (Bank account) succeeds", bankRes.ok, `status=${bankRes.status} body=${JSON.stringify(bankJson)}`);
@@ -140,12 +160,19 @@ async function main() {
     bankCreditLines[0]?.accountId === bank.id,
     `accountId=${bankCreditLines[0]?.accountId} expected=${bank.id}`
   );
+
+  for (let i = 0; i < 3; i++) {
+    const line = bankDebitLines.find((l) => l.chequeNo === `CHQ-${stamp}-${i + 1}`);
+    check(
+      `Bank debit line ${i + 1} has its own cheque details`,
+      Boolean(line) && line!.bankName === "TEST Bank Ltd" && line!.chequeDate !== null,
+      `line=${JSON.stringify(line)}`
+    );
+  }
   check(
-    "Bank detail fields stored",
-    bankVoucher.bankName === "TEST Bank Ltd" &&
-      bankVoucher.chequeNo === `CHQ-${stamp}` &&
-      bankVoucher.chequeDate !== null,
-    `bankName=${bankVoucher.bankName} chequeNo=${bankVoucher.chequeNo} chequeDate=${bankVoucher.chequeDate}`
+    "Credit line's bank fields are null",
+    bankCreditLines[0]?.bankName === null && bankCreditLines[0]?.chequeNo === null && bankCreditLines[0]?.chequeDate === null,
+    `bankName=${bankCreditLines[0]?.bankName} chequeNo=${bankCreditLines[0]?.chequeNo} chequeDate=${bankCreditLines[0]?.chequeDate}`
   );
 
   const postedBankVoucher = await postEntry(bankVoucher.id);
@@ -167,27 +194,55 @@ async function main() {
   const cashVoucher = cashJson.data as JournalEntryDetail;
 
   check(
-    "Cash voucher bank fields are null",
-    cashVoucher.bankName === null && cashVoucher.chequeNo === null && cashVoucher.chequeDate === null,
-    `bankName=${cashVoucher.bankName} chequeNo=${cashVoucher.chequeNo} chequeDate=${cashVoucher.chequeDate}`
+    "Cash voucher bank fields are null on every line",
+    cashVoucher.lines.every((l) => l.bankName === null && l.chequeNo === null && l.chequeDate === null),
+    `lines=${JSON.stringify(cashVoucher.lines)}`
   );
   check("Cash voucher has exactly 4 lines (3 debit + 1 credit)", cashVoucher.lines.length === 4, `lines=${cashVoucher.lines.length}`);
 
   const postedCashVoucher = await postEntry(cashVoucher.id);
   check("Cash voucher posts successfully", postedCashVoucher.status === "POSTED", `status=${postedCashVoucher.status}`);
 
-  // --- 3. Guard: a Bank account without bank detail fields is rejected server-side ---
+  // --- 3. Guard: a Bank account with bank fields filled on some lines but missing on at
+  // least one line is rejected server-side, and the error identifies the specific
+  // incomplete line (line 2 here), not just a generic voucher-level failure. ---
   const { res: missingBankRes, json: missingBankJson } = await createDebitVoucher({
     date: new Date().toISOString(),
     branchId: branch.id,
     description: "TEST: should be rejected — Bank account without bank fields",
     cashBankAccountId: bank.id,
-    lines: [{ expenseAccountId: operatingExpenses.id, amount: 10, description: "Line 1" }],
+    lines: [
+      {
+        expenseAccountId: operatingExpenses.id,
+        amount: 10,
+        description: "Line 1",
+        bankName: "TEST Bank Ltd",
+        chequeNo: `CHQ-${stamp}-guard1`,
+        chequeDate: new Date().toISOString(),
+      },
+      { expenseAccountId: expense2.id, amount: 20, description: "Line 2 — missing bank fields" },
+      {
+        expenseAccountId: expense3.id,
+        amount: 30,
+        description: "Line 3",
+        bankName: "TEST Bank Ltd",
+        chequeNo: `CHQ-${stamp}-guard3`,
+        chequeDate: new Date().toISOString(),
+      },
+    ],
   });
   check(
-    "Bank account without bank fields is rejected",
+    "Bank account with an incomplete line is rejected",
     missingBankRes.status === 400,
     `status=${missingBankRes.status} body=${JSON.stringify(missingBankJson)}`
+  );
+  check(
+    "Rejection identifies line 2 specifically, not lines 1 or 3",
+    typeof missingBankJson?.error === "string" &&
+      missingBankJson.error.includes("2") &&
+      !/\bline\(s\) 1\b/.test(missingBankJson.error) &&
+      !/\bline\(s\) 3\b/.test(missingBankJson.error),
+    `error=${missingBankJson?.error}`
   );
 
   // Fetch back from the DB source of truth to confirm nothing was persisted for the rejected attempt.

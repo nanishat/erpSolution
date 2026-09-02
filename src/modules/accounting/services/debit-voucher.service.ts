@@ -8,7 +8,10 @@ import {
   serializeJournalEntry,
   type JournalEntryWithLines,
 } from "@/modules/accounting/services/journal-entry.service";
-import type { DebitVoucherInput } from "@/modules/accounting/validations/debit-voucher.schema";
+import {
+  debitVoucherSchemaWithBankRequirement,
+  type DebitVoucherInput,
+} from "@/modules/accounting/validations/debit-voucher.schema";
 
 export class CashBankAccountNotFoundError extends Error {
   constructor(id: string) {
@@ -18,14 +21,17 @@ export class CashBankAccountNotFoundError extends Error {
 }
 
 // The real enforcement point for the Bank-account conditional requirement —
-// Zod (debit-voucher.schema.ts) can't check this since it needs the
-// account's AccountSubType from the DB, so it accepts bankName/chequeNo/
-// chequeDate as plain optional fields and this is where they're actually
-// required, once cashBankAccountId's subType is known.
+// debitVoucherSchema alone can't check this since it needs the account's
+// AccountSubType from the DB, so it accepts bankName/chequeNo/chequeDate as
+// plain per-line optional fields. Once cashBankAccountId's subType is known
+// here, debitVoucherSchemaWithBankRequirement is re-run to collect exactly
+// which line(s) are missing which field(s), so the resulting message names
+// the specific incomplete line(s) rather than failing the whole voucher
+// generically.
 export class BankDetailsRequiredError extends Error {
-  constructor() {
+  constructor(lineNumbers: number[]) {
     super(
-      "Bank Name, Cheque No, and Cheque Date are required when the Cash/Bank Account is a Bank-type account"
+      `Bank Name, Cheque No, and Cheque Date are required on line(s) ${lineNumbers.join(", ")} because the Cash/Bank Account is a Bank-type account`
     );
     this.name = "BankDetailsRequiredError";
   }
@@ -59,8 +65,16 @@ async function createDebitVoucherWithClient(
   }
 
   const isBankAccount = cashBankAccount.subType === "BANK";
-  if (isBankAccount && (!input.bankName?.trim() || !input.chequeNo?.trim() || !input.chequeDate)) {
-    throw new BankDetailsRequiredError();
+  const bankCheck = debitVoucherSchemaWithBankRequirement(isBankAccount).safeParse(input);
+  if (!bankCheck.success) {
+    const lineNumbers = Array.from(
+      new Set(
+        bankCheck.error.issues
+          .filter((issue) => issue.path[0] === "lines" && typeof issue.path[1] === "number")
+          .map((issue) => (issue.path[1] as number) + 1)
+      )
+    ).sort((a, b) => a - b);
+    throw new BankDetailsRequiredError(lineNumbers);
   }
 
   const totalAmount = input.lines.reduce((sum, line) => sum + line.amount, 0);
@@ -80,9 +94,6 @@ async function createDebitVoucherWithClient(
       voucherType: "DEBIT_VOUCHER",
       documentNumber,
       createdById,
-      bankName: isBankAccount ? input.bankName!.trim() : null,
-      chequeNo: isBankAccount ? input.chequeNo!.trim() : null,
-      chequeDate: isBankAccount ? input.chequeDate! : null,
       lines: {
         create: [
           ...input.lines.map((line) => ({
@@ -91,6 +102,9 @@ async function createDebitVoucherWithClient(
             debit: line.amount,
             credit: 0,
             memo: line.description,
+            bankName: isBankAccount ? line.bankName!.trim() : null,
+            chequeNo: isBankAccount ? line.chequeNo!.trim() : null,
+            chequeDate: isBankAccount ? line.chequeDate! : null,
           })),
           {
             accountId: input.cashBankAccountId,
