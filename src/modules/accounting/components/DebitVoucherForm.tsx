@@ -184,7 +184,7 @@ export function DebitVoucherForm({
             </option>
             {branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
-                {branch.name} ({branch.code})
+                {branch.name}
               </option>
             ))}
           </select>

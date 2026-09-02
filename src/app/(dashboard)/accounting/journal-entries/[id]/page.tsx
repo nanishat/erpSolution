@@ -80,7 +80,7 @@ export default async function JournalEntryDetailPage({
         <div>
           <div className="text-xs text-muted-foreground">Branch</div>
           <div className="text-sm">
-            {entry.branch.name} ({entry.branch.code})
+            {entry.branch.name}
           </div>
         </div>
         <div>
@@ -123,7 +123,7 @@ export default async function JournalEntryDetailPage({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  {line.branchId === entry.branchId ? "—" : `${line.branch.name} (${line.branch.code})`}
+                  {line.branchId === entry.branchId ? "—" : line.branch.name}
                 </td>
                 <td className="px-3 py-2">{line.memo ?? "—"}</td>
                 <td className="px-3 py-2 text-right">{Number(line.debit).toFixed(2)}</td>

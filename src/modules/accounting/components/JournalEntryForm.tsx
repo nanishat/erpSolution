@@ -189,7 +189,7 @@ export function JournalEntryForm({
             </option>
             {branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
-                {branch.name} ({branch.code})
+                {branch.name}
               </option>
             ))}
           </select>
@@ -291,7 +291,7 @@ export function JournalEntryForm({
               </option>
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.id}>
-                  {branch.name} ({branch.code})
+                  {branch.name}
                 </option>
               ))}
             </select>

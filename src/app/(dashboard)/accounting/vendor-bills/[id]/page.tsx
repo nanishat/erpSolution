@@ -83,7 +83,7 @@ export default async function VendorBillDetailPage({
         <div>
           <div className="text-xs text-muted-foreground">Branch</div>
           <div className="text-sm">
-            {invoice.branch.name} ({invoice.branch.code})
+            {invoice.branch.name}
           </div>
         </div>
         {invoice.notes && (
