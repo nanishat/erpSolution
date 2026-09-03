@@ -25,20 +25,23 @@ async function main() {
     return;
   }
 
-  const assets = await prisma.chartOfAccount.findUnique({ where: { code: "1000" } });
-  if (!assets) {
-    throw new Error('Assets header account (code "1000") not found — run seed-coa.ts first.');
+  const expense = await prisma.chartOfAccount.findUnique({ where: { code: "5000" } });
+  if (!expense) {
+    throw new Error('Expense header account (code "5000") not found — run seed-coa.ts first.');
   }
 
+  // EXPENSE/OTHER_EXPENSE, not ASSET — see the reclassification note in
+  // migration 20260903100000_seed_head_of_expense_accounts. Unusual for a
+  // clearing account, but explicit/confirmed, not inferred.
   const suspense = await prisma.chartOfAccount.create({
     data: {
       code: SUSPENSE_CODE,
       name: SUSPENSE_NAME,
       description:
         "Holds loan-related or anonymous/unclassified transactions until they are properly categorized.",
-      type: "ASSET",
-      subType: "CURRENT_ASSET",
-      parentId: assets.id,
+      type: "EXPENSE",
+      subType: "OTHER_EXPENSE",
+      parentId: expense.id,
       isSystem: true,
       isActive: true,
     },
