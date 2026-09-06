@@ -255,6 +255,11 @@ model Partner {
   // touches this field alone, never outstandingBalance.
   payableBalance Decimal @default(0) @db.Decimal(18, 2)
 
+  // Denormalized running total of open overpayment credit (PartnerCredit),
+  // same pattern as outstandingBalance/payableBalance above — updated only
+  // by service-layer logic (created/consumed/voided), never a dynamic key.
+  creditBalance Decimal @default(0) @db.Decimal(18, 2)
+
   createdById Int?
   createdBy   User? @relation(fields: [createdById], references: [id])
 
@@ -264,10 +269,8 @@ model Partner {
   taxApplications TaxApplication[]
   invoices        Invoice[]
   fixedAssets     FixedAsset[]
-
-  // Full reconciliation (multi-invoice allocation, bank statement matching)
-  // still deferred to Phase 4 — this is just the back-relation for the
-  // minimal single-invoice Payment model added ahead of that.
+  payments        Payment[]
+  credits         PartnerCredit[]
 
   @@index([type])
   @@index([tin])
@@ -368,8 +371,9 @@ model Invoice {
 
   notes String?
 
-  lines    InvoiceLine[]
-  payments Payment[]
+  lines              InvoiceLine[]
+  paymentAllocations PaymentAllocation[]
+  creditApplications CreditApplication[]
 
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id])
@@ -401,21 +405,24 @@ model InvoiceLine {
   @@index([invoiceId])
 }
 
-// Minimal single-invoice payment recording — deliberately NOT full payment
-// reconciliation (multi-invoice allocation, bank statement matching, etc.
-// stay deferred to Phase 4, Payments & Reconciliation). Just enough to move
-// an Invoice from POSTED to PARTIALLY_PAID/PAID (see recordPayment in
-// payment.service.ts). One row per payment; an invoice can have several.
+// Phase 4: a payment received from (or made to) a Partner, which can now
+// fund multiple invoices (PaymentAllocation) and/or leave money over as an
+// overpayment credit (PartnerCredit) — replacing the Phase 3 minimal
+// single-invoice model (direct `invoiceId` FK). Direction (customer receipt
+// vs. vendor payment) is inferred from Partner.type — deliberately not
+// stored redundantly here. Service-layer invariant (Tuesday): sum of a
+// Payment's allocations' amountApplied + its creditGrant.originalAmount (if
+// any) must equal amount.
 model Payment {
   id        String  @id @default(cuid())
-  invoiceId String
-  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id])
 
   amount    Decimal  @db.Decimal(18, 2)
   date      DateTime
   method    String? // free text for now — "Cash", "Bank Transfer", "Cheque",
-  // etc. Not an enum, since Phase 4 may need to formalize this alongside
-  // real reconciliation; keep it simple now.
+  // etc. Not an enum, since reconciliation may need to formalize this
+  // alongside real bank-statement matching; keep it simple now.
   reference String? // e.g. cheque number, transaction ref
 
   // Eagerly created, mirrors the Invoice/JournalEntry pattern — required,
@@ -423,10 +430,76 @@ model Payment {
   journalEntryId String       @unique
   journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
 
+  allocations PaymentAllocation[]
+  creditGrant PartnerCredit?
+
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
 
+  @@index([partnerId])
+}
+
+// Join row: how much of a Payment was applied to a given Invoice. No unique
+// constraint on [paymentId, invoiceId] — multiple rows for the same pair are
+// allowed (e.g. correction scenarios); sum amountApplied across a payment's
+// rows for one invoice to get that invoice's total applied. Validation (sums
+// must not exceed Payment.amount / an invoice's outstanding total) is
+// service-layer, not enforced here.
+model PaymentAllocation {
+  id        String  @id @default(cuid())
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id])
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+
+  amountApplied Decimal @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([invoiceId])
+}
+
+// Overpayment ledger — created when a Payment's amount exceeds what gets
+// allocated to invoices. sourcePaymentId is unique: at most one credit per
+// overpaying Payment. Consumption against a later invoice is tracked via
+// CreditApplication and applied by manual selection, not auto-applied to a
+// partner's next new invoice — per the 2026-09-06 decision (revisit before
+// building auto-apply).
+model PartnerCredit {
+  id        String  @id @default(cuid())
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id])
+
+  sourcePaymentId String  @unique
+  sourcePayment   Payment @relation(fields: [sourcePaymentId], references: [id])
+
+  originalAmount  Decimal      @db.Decimal(18, 2)
+  remainingAmount Decimal      @db.Decimal(18, 2)
+  status          CreditStatus @default(OPEN)
+
+  applications CreditApplication[]
+
+  createdAt DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([status])
+}
+
+// Tracks later consumption of a PartnerCredit against an invoice.
+model CreditApplication {
+  id       String        @id @default(cuid())
+  creditId String
+  credit   PartnerCredit @relation(fields: [creditId], references: [id])
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+
+  amountApplied Decimal  @db.Decimal(18, 2)
+  appliedAt     DateTime @default(now())
+
+  @@index([creditId])
   @@index([invoiceId])
 }
 
@@ -686,4 +759,11 @@ enum AssetStatus {
   ACTIVE
   DISPOSED
   FULLY_DEPRECIATED
+}
+
+enum CreditStatus {
+  OPEN
+  PARTIALLY_APPLIED
+  FULLY_APPLIED
+  VOID
 }

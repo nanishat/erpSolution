@@ -221,9 +221,18 @@ const invoiceInclude = {
     include: { productService: { select: { id: true, code: true, name: true } } },
     orderBy: { sortOrder: "asc" },
   },
-  payments: {
-    select: { id: true, amount: true, date: true, method: true, reference: true, createdAt: true },
-    orderBy: { date: "asc" },
+  // Payment no longer has a direct invoiceId FK (Phase 4: multi-invoice
+  // allocation) — fetched through the PaymentAllocation join table instead
+  // and reshaped back to the same flat `payments` shape below so existing
+  // consumers (PaymentHistoryTable, this page) don't need to change.
+  paymentAllocations: {
+    select: {
+      id: true,
+      amountApplied: true,
+      createdAt: true,
+      payment: { select: { date: true, method: true, reference: true } },
+    },
+    orderBy: { createdAt: "asc" },
   },
 } satisfies Prisma.InvoiceInclude;
 
@@ -237,7 +246,7 @@ type InvoiceRow = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
 // serializeJournalEntry() in journal-entry.service.ts.
 export type InvoiceWithLines = Omit<
   InvoiceRow,
-  "subtotal" | "taxTotal" | "grandTotal" | "amountPaid" | "lines" | "payments"
+  "subtotal" | "taxTotal" | "grandTotal" | "amountPaid" | "lines" | "paymentAllocations"
 > & {
   subtotal: number;
   taxTotal: number;
@@ -248,7 +257,14 @@ export type InvoiceWithLines = Omit<
     unitPrice: number;
     lineTotal: number;
   })[];
-  payments: (Omit<InvoiceRow["payments"][number], "amount"> & { amount: number })[];
+  payments: {
+    id: string;
+    amount: number;
+    date: Date;
+    method: string | null;
+    reference: string | null;
+    createdAt: Date;
+  }[];
 };
 
 function serializeInvoice(invoice: InvoiceRow): InvoiceWithLines {
@@ -264,9 +280,13 @@ function serializeInvoice(invoice: InvoiceRow): InvoiceWithLines {
       unitPrice: Number(line.unitPrice),
       lineTotal: Number(line.lineTotal),
     })),
-    payments: invoice.payments.map((payment) => ({
-      ...payment,
-      amount: Number(payment.amount),
+    payments: invoice.paymentAllocations.map((allocation) => ({
+      id: allocation.id,
+      amount: Number(allocation.amountApplied),
+      date: allocation.payment.date,
+      method: allocation.payment.method,
+      reference: allocation.payment.reference,
+      createdAt: allocation.createdAt,
     })),
   };
 }
@@ -656,7 +676,7 @@ export async function cancelInvoice(id: string): Promise<CancelInvoiceResult> {
       throw new InvoiceNotCancellableError(id, invoice.status);
     }
 
-    const paymentCount = await tx.payment.count({ where: { invoiceId: id } });
+    const paymentCount = await tx.paymentAllocation.count({ where: { invoiceId: id } });
     if (paymentCount > 0) {
       throw new InvoiceHasPaymentsError(id, paymentCount);
     }
@@ -726,7 +746,7 @@ export async function reverseInvoice(
       throw new InvoiceNotReversibleError(id, invoice.status);
     }
 
-    const paymentCount = await tx.payment.count({ where: { invoiceId: id } });
+    const paymentCount = await tx.paymentAllocation.count({ where: { invoiceId: id } });
     if (paymentCount > 0) {
       throw new InvoiceHasPaymentsError(id, paymentCount);
     }

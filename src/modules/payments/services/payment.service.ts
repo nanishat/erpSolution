@@ -51,7 +51,11 @@ function roundCurrency(amount: number): number {
 }
 
 const paymentInclude = {
-  invoice: { select: { id: true, invoiceNumber: true, status: true, amountPaid: true } },
+  allocations: {
+    include: {
+      invoice: { select: { id: true, invoiceNumber: true, status: true, amountPaid: true } },
+    },
+  },
   journalEntry: { select: { id: true, documentNumber: true, status: true } },
 } satisfies Prisma.PaymentInclude;
 
@@ -60,9 +64,12 @@ export type PaymentWithRelations = Prisma.PaymentGetPayload<{
 }>;
 
 /**
- * Records a single payment against one POSTED/PARTIALLY_PAID invoice —
- * deliberately NOT full payment reconciliation (multi-invoice allocation,
- * bank statement matching, etc. stay deferred to Phase 4). Everything below
+ * Records a single payment against one POSTED/PARTIALLY_PAID invoice,
+ * creating exactly one PaymentAllocation row for it. The schema now
+ * supports multi-invoice allocation and an overpayment credit ledger
+ * (Payment.allocations / Payment.creditGrant — see PartnerCredit), but this
+ * function itself is still single-invoice pending the Phase 4 service-layer
+ * rework; bank statement matching also stays deferred. Everything below
  * runs in one transaction so a rejected payment never partially applies.
  *
  * Atomic, not two-step like Invoice's create-then-post: a Payment has no
@@ -210,13 +217,16 @@ export async function recordPayment(
 
     return tx.payment.create({
       data: {
-        invoiceId,
+        partnerId: invoice.partnerId,
         amount: input.amount,
         date: input.date,
         method: input.method,
         reference: input.reference,
         journalEntryId: journalEntry.id,
         createdById: input.createdById,
+        allocations: {
+          create: { invoiceId, amountApplied: input.amount },
+        },
       },
       include: paymentInclude,
     });
