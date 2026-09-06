@@ -180,17 +180,20 @@ and the `CUSTOMER`/`VENDOR` partner fixtures go through the real API.
 
 - Creating an invoice with 2 lines against 2 different `ProductService` rows
   (different `incomeAccountId`s each): invoice number format is
-  `SECTOR/BranchCode/YYYYMM/0001` with `sector` uppercased from lowercase
-  input; each line's `lineTotal = quantity * unitPrice`; `subtotal` is their
-  sum; `taxTotal` is `0` and `grandTotal = subtotal` at creation (tax attaches
-  later via the existing `TaxApplication` flow, unchanged); the eagerly-created
-  `JournalEntry` is `DRAFT` with `voucherType: INVOICE_VOUCHER`, has exactly 3
-  lines (one Accounts Receivable debit for the full subtotal + one grouped
-  credit line per distinct income account), and balances (total debit = total
-  credit)
-- A second invoice in the same sector/branch/month increments to `0002`; a
-  different sector resets its own sequence to `0001` (branch/month-boundary
-  increments aren't covered — only one branch exists in this dev DB)
+  `SECTOR/YYYYMM/0001` with `sector` uppercased from lowercase input (the
+  Branch segment was dropped from the format, and the underlying counter is
+  now shared across all branches per sector+month — see
+  `invoice-document-sequence.service.ts`); each line's `lineTotal = quantity
+  * unitPrice`; `subtotal` is their sum; `taxTotal` is `0` and `grandTotal =
+  subtotal` at creation (tax attaches later via the existing `TaxApplication`
+  flow, unchanged); the eagerly-created `JournalEntry` is `DRAFT` with
+  `voucherType: INVOICE_VOUCHER`, has exactly 3 lines (one Accounts
+  Receivable debit for the full subtotal + one grouped credit line per
+  distinct income account), and balances (total debit = total credit)
+- A second invoice in the same sector/month increments to `0002`; a different
+  sector resets its own sequence to `0001` (cross-branch increments aren't
+  covered — only one branch exists in this dev DB, but the shared counter no
+  longer keys on branch at all, so this doesn't matter)
 - Creating an invoice against a `VENDOR`-type partner is rejected with
   `PartnerNotCustomerError`
 - A line with no `productServiceId` (no catalog reference, therefore no
@@ -209,16 +212,17 @@ Covers Vendor Bills — `Invoice.direction: VENDOR`, added alongside the
 existing Customer Invoice path (`direction: CUSTOMER`) so one `Invoice`
 model represents both. A Vendor Bill: requires a `VENDOR`-type partner
 (`PartnerNotVendorError` otherwise), numbers via the new
-`generateVendorBillNumber` (`VB/{BranchCode}/{YYYYMM}/{Seq}` — no sector
-segment at all, per the locked decision that Vendor Bill numbering doesn't
-use sector; `Invoice.sector` is stored `null` for this direction), resolves
-each line's account via `ProductService.expenseAccountId` instead of
-`incomeAccountId` (rejected with the new `InvoiceLineMissingExpenseAccountError`
-if absent), and posts by crediting Accounts Payable (`2100`) and debiting the
-grouped expense accounts — the mirror image of a Customer Invoice's AR debit
-/ income credit shape.
+`generateVendorBillNumber` (`VB/{YYYYMM}/{Seq}` — no branch or sector
+segment at all; the counter is shared across all branches per month, per
+the locked decision that Vendor Bill numbering doesn't use sector;
+`Invoice.sector` is stored `null` for this direction), resolves each line's
+account via `ProductService.expenseAccountId` instead of `incomeAccountId`
+(rejected with the new `InvoiceLineMissingExpenseAccountError` if absent),
+and posts by crediting Accounts Payable (`2100`) and debiting the grouped
+expense accounts — the mirror image of a Customer Invoice's AR debit /
+income credit shape.
 
-- Creating and posting a Vendor Bill: correct `VB/HO/YYYYMM/0001`-shaped
+- Creating and posting a Vendor Bill: correct `VB/YYYYMM/0001`-shaped
   document number, `sector: null`, JournalEntry has exactly 1 AP credit +
   1 expense debit line (both 15000, balanced), posting succeeds, and
   `Partner.payableBalance` increases by exactly the bill's `grandTotal`

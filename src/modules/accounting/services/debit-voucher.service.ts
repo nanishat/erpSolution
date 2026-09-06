@@ -50,7 +50,7 @@ async function createDebitVoucherWithClient(
 ): Promise<JournalEntryWithLines> {
   const branch = await tx.branch.findUnique({
     where: { id: input.branchId },
-    select: { code: true },
+    select: { id: true },
   });
   if (!branch) {
     throw new BranchNotFoundError(input.branchId);
@@ -81,8 +81,6 @@ async function createDebitVoucherWithClient(
 
   const documentNumber = await generateDocumentNumber(tx, {
     voucherType: "DEBIT_VOUCHER",
-    branchId: input.branchId,
-    branchCode: branch.code,
     date: input.date,
   });
 

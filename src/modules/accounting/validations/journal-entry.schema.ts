@@ -58,8 +58,8 @@ export const journalEntrySchema = z
   .superRefine(validateBalancedLines);
 
 // voucherType/branchId/documentNumber are fixed at creation (the document
-// number is stamped from them) so editing a DRAFT entry can't change them —
-// only date/description/reference/lines are mutable.
+// number is stamped from voucherType) so editing a DRAFT entry can't change
+// them — only date/description/reference/lines are mutable.
 export const updateJournalEntrySchema = z
   .object({
     date: z.coerce.date(),

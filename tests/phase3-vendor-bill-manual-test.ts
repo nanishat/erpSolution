@@ -8,7 +8,7 @@
 //
 // Focus of this script specifically:
 // - A Vendor Bill posts correctly: Accounts Payable credited, the
-//   ProductService's expenseAccountId debited, balanced, VB/Branch/YYYYMM/Seq
+//   ProductService's expenseAccountId debited, balanced, VB/YYYYMM/Seq
 //   document number, Partner.payableBalance increases by the right amount.
 // - Strict balance-field isolation (the locked decision this prompt is built
 //   around): Vendor Bill posting NEVER touches Partner.outstandingBalance,
@@ -183,8 +183,8 @@ async function main() {
   check("Vendor Bill grandTotal = subtotal (15000), no tax", Number(bill.grandTotal) === 15000, `grandTotal=${bill.grandTotal}`);
   check("Vendor Bill sector is null (VENDOR direction doesn't use sector)", bill.sector === null, `sector=${bill.sector}`);
   check(
-    "Vendor Bill number format is VB/BRANCHCODE/YYYYMM/SEQ",
-    new RegExp(`^VB/${branch.code}/\\d{6}/\\d{4}$`).test(bill.invoiceNumber),
+    "Vendor Bill number format is VB/YYYYMM/SEQ",
+    new RegExp(`^VB/\\d{6}/\\d{4}$`).test(bill.invoiceNumber),
     `invoiceNumber=${bill.invoiceNumber}`
   );
 

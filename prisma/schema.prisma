@@ -28,14 +28,11 @@ model Branch {
   code         String  @unique
   isHeadOffice Boolean @default(false)
 
-  journalEntries              JournalEntry[]
-  journalLines                JournalLine[]
-  documentSequences           DocumentSequence[]
-  invoiceDocumentSequences    InvoiceDocumentSequence[]
-  vendorBillDocumentSequences VendorBillDocumentSequence[]
-  localPartners               Partner[]
-  invoices                    Invoice[]
-  fixedAssets                 FixedAsset[]
+  journalEntries JournalEntry[]
+  journalLines   JournalLine[]
+  localPartners  Partner[]
+  invoices       Invoice[]
+  fixedAssets    FixedAsset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -109,56 +106,61 @@ model JournalLine {
   @@index([branchId])
 }
 
+// Counter is shared across all branches — one serial per voucher type per
+// month, regardless of which branch created the document (2026-09 decision:
+// a per-branch counter made numbers from different branches look like a
+// duplicate/break in the same month's series). branchId was deliberately
+// removed from the key (and the table): a shared counter row can't
+// coherently point at one branch anymore. JournalEntry.branchId is
+// untouched — this only affects the numbering counter, not branch tracking.
 model DocumentSequence {
   id          String      @id @default(cuid())
   voucherType VoucherType
-  branchId    String
-  branch      Branch      @relation(fields: [branchId], references: [id])
   yearMonth   String
   lastNumber  Int         @default(0)
 
-  @@unique([voucherType, branchId, yearMonth])
+  @@unique([voucherType, yearMonth])
 }
 
-// Parallel sequence table for invoice numbering (Sector/Branch/YYYYMM/Seq,
-// e.g. "GS/HO/202608/0001") rather than reusing DocumentSequence. Kept
-// separate instead of generalizing DocumentSequence.voucherType into a
-// shared String key because the two key types aren't actually the same
-// shape: voucherType is a closed 4-value enum (VoucherType) that
-// generateDocumentNumber exhaustiveness-checks via a Record lookup, while
-// sector is explicitly open-vocabulary free text (the full sector list
-// isn't known yet — see Invoice.sector). Loosening the voucher path's enum
-// to a string just to share one table would cost real type safety on
-// existing, working code for a dimension that doesn't apply to it. This
-// table mirrors DocumentSequence's shape 1:1 (same upsert + atomic
-// `increment` pattern will apply in the number-generation service), so the
-// two are conceptually and structurally identical — just intentionally
-// not the same table.
+// Parallel sequence table for invoice numbering (Sector/YYYYMM/Seq, e.g.
+// "GS/202608/0001") rather than reusing DocumentSequence. Kept separate
+// instead of generalizing DocumentSequence.voucherType into a shared String
+// key because the two key types aren't actually the same shape: voucherType
+// is a closed 4-value enum (VoucherType) that generateDocumentNumber
+// exhaustiveness-checks via a Record lookup, while sector is explicitly
+// open-vocabulary free text (the full sector list isn't known yet — see
+// Invoice.sector). Loosening the voucher path's enum to a string just to
+// share one table would cost real type safety on existing, working code for
+// a dimension that doesn't apply to it. This table mirrors DocumentSequence's
+// shape 1:1 (same upsert + atomic `increment` pattern will apply in the
+// number-generation service), so the two are conceptually and structurally
+// identical — just intentionally not the same table.
+//
+// Counter is shared across all branches per sector+month, same reasoning
+// and same 2026-09 change as DocumentSequence above — branchId removed from
+// the key and the table.
 model InvoiceDocumentSequence {
   id         String @id @default(cuid())
   sector     String
-  branchId   String
-  branch     Branch @relation(fields: [branchId], references: [id])
   yearMonth  String
   lastNumber Int    @default(0)
 
-  @@unique([sector, branchId, yearMonth])
+  @@unique([sector, yearMonth])
 }
 
 // Vendor Bill numbering (direction: VENDOR on Invoice) does NOT use sector —
 // per the locked decision, Vendor Bills get their own separate numbering
-// scheme entirely, not Sector/Branch/YYYYMM/Seq. Mirrors
-// InvoiceDocumentSequence's shape 1:1 minus the sector column, same
-// upsert + atomic `increment` pattern (see generateVendorBillNumber in
-// invoice-document-sequence.service.ts).
+// scheme entirely, not Sector/YYYYMM/Seq. Mirrors InvoiceDocumentSequence's
+// shape 1:1 minus the sector column, same upsert + atomic `increment`
+// pattern (see generateVendorBillNumber in invoice-document-sequence.service.ts).
+//
+// Counter is shared across all branches per month — one row per yearMonth,
+// same 2026-09 change as DocumentSequence/InvoiceDocumentSequence above —
+// branchId removed from the key and the table.
 model VendorBillDocumentSequence {
   id         String @id @default(cuid())
-  branchId   String
-  branch     Branch @relation(fields: [branchId], references: [id])
-  yearMonth  String
+  yearMonth  String @unique
   lastNumber Int    @default(0)
-
-  @@unique([branchId, yearMonth])
 }
 
 model ChartOfAccount {
@@ -317,10 +319,10 @@ model ProductService {
 
 // Invoice header — represents BOTH a Customer Invoice (direction: CUSTOMER)
 // and a Vendor Bill (direction: VENDOR). Customer Invoices are numbered
-// Sector/Branch/YYYYMM/Seq (e.g. "GS/HO/202608/0001") via
-// InvoiceDocumentSequence; Vendor Bills don't use sector at all and get
-// their own separate VB/Branch/YYYYMM/Seq numbering via
-// VendorBillDocumentSequence — see those models and
+// Sector/YYYYMM/Seq (e.g. "GS/202608/0001") via InvoiceDocumentSequence,
+// shared across all branches; Vendor Bills don't use sector at all and get
+// their own separate VB/YYYYMM/Seq numbering via VendorBillDocumentSequence,
+// also shared across all branches — see those models and
 // invoice-document-sequence.service.ts. Creation eagerly creates a DRAFT
 // JournalEntry (journalEntryId is required + @unique, i.e. a strict 1:1),
 // mirroring how vouchers already work — no schema gymnastics needed.
@@ -330,8 +332,8 @@ model ProductService {
 // Schema only for now — no service/API/UI layer yet.
 model Invoice {
   id            String           @id @default(cuid())
-  invoiceNumber String           @unique // auto-generated — Sector/Branch/YYYYMM/Seq for
-  // CUSTOMER direction, VB/Branch/YYYYMM/Seq for VENDOR direction
+  invoiceNumber String           @unique // auto-generated — Sector/YYYYMM/Seq for
+  // CUSTOMER direction, VB/YYYYMM/Seq for VENDOR direction
   direction     InvoiceDirection // CUSTOMER = Customer Invoice, VENDOR = Vendor Bill —
   // required, no default: every row must explicitly say which it is
 

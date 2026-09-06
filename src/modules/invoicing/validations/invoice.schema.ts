@@ -34,8 +34,8 @@ const baseInvoiceFields = {
   createdById: z.coerce.number().int().optional(),
 };
 
-// direction: CUSTOMER — Customer Invoice, numbered Sector/Branch/YYYYMM/Seq,
-// so sector is required here.
+// direction: CUSTOMER — Customer Invoice, numbered Sector/YYYYMM/Seq, so
+// sector is required here.
 const customerInvoiceSchema = z
   .object({
     ...baseInvoiceFields,
@@ -45,10 +45,10 @@ const customerInvoiceSchema = z
   .strict();
 
 // direction: VENDOR — Vendor Bill. Per the locked decision, Vendor Bill
-// numbering does NOT use sector at all (separate VB/Branch/YYYYMM/Seq
-// scheme — see generateVendorBillNumber), so sector is deliberately not a
-// field here at all rather than an optional/ignored one — createInvoice
-// stores Invoice.sector as null for this direction.
+// numbering does NOT use sector at all (separate VB/YYYYMM/Seq scheme —
+// see generateVendorBillNumber), so sector is deliberately not a field
+// here at all rather than an optional/ignored one — createInvoice stores
+// Invoice.sector as null for this direction.
 const vendorBillSchema = z
   .object({
     ...baseInvoiceFields,

@@ -6,11 +6,12 @@ function toYearMonth(date: Date): string {
 }
 
 /**
- * Atomically reserves the next sequence number for a sector + branch + month,
- * and returns the formatted invoice number, e.g. "GS/HO/202607/0001". Mirrors
- * generateDocumentNumber in document-sequence.service.ts exactly, against a
- * parallel sequence table (InvoiceDocumentSequence) — see that model's schema
- * comment for why invoices don't share DocumentSequence with vouchers.
+ * Atomically reserves the next sequence number for a sector + month — shared
+ * across all branches — and returns the formatted invoice number, e.g.
+ * "GS/202607/0001". Mirrors generateDocumentNumber in
+ * document-sequence.service.ts exactly, against a parallel sequence table
+ * (InvoiceDocumentSequence) — see that model's schema comment for why
+ * invoices don't share DocumentSequence with vouchers.
  *
  * Must be called inside the same transaction that creates the Invoice: an
  * upsert with an atomic `increment` avoids the read-then-write race that a
@@ -20,21 +21,19 @@ function toYearMonth(date: Date): string {
  */
 export async function generateInvoiceNumber(
   tx: Prisma.TransactionClient,
-  params: { sector: string; branchId: string; branchCode: string; date: Date }
+  params: { sector: string; date: Date }
 ): Promise<string> {
   const yearMonth = toYearMonth(params.date);
 
   const sequence = await tx.invoiceDocumentSequence.upsert({
     where: {
-      sector_branchId_yearMonth: {
+      sector_yearMonth: {
         sector: params.sector,
-        branchId: params.branchId,
         yearMonth,
       },
     },
     create: {
       sector: params.sector,
-      branchId: params.branchId,
       yearMonth,
       lastNumber: 1,
     },
@@ -45,15 +44,15 @@ export async function generateInvoiceNumber(
 
   const paddedNumber = String(sequence.lastNumber).padStart(4, "0");
 
-  return `${params.sector}/${params.branchCode}/${yearMonth}/${paddedNumber}`;
+  return `${params.sector}/${yearMonth}/${paddedNumber}`;
 }
 
 /**
  * Same atomic upsert + increment pattern as generateInvoiceNumber above,
  * against the separate VendorBillDocumentSequence table — per the locked
  * decision, Vendor Bill numbering does NOT use sector at all, so the key is
- * just branch + month. Format: "VB/{BranchCode}/{YYYYMM}/{Seq}", e.g.
- * "VB/HO/202608/0001" — same shape as the Customer Invoice format minus the
+ * just month, shared across all branches. Format: "VB/{YYYYMM}/{Seq}", e.g.
+ * "VB/202608/0001" — same shape as the Customer Invoice format minus the
  * sector segment, with a "VB" literal marking it as a Vendor Bill.
  *
  * Must be called inside the same transaction that creates the Invoice, same
@@ -62,19 +61,15 @@ export async function generateInvoiceNumber(
  */
 export async function generateVendorBillNumber(
   tx: Prisma.TransactionClient,
-  params: { branchId: string; branchCode: string; date: Date }
+  params: { date: Date }
 ): Promise<string> {
   const yearMonth = toYearMonth(params.date);
 
   const sequence = await tx.vendorBillDocumentSequence.upsert({
     where: {
-      branchId_yearMonth: {
-        branchId: params.branchId,
-        yearMonth,
-      },
+      yearMonth,
     },
     create: {
-      branchId: params.branchId,
       yearMonth,
       lastNumber: 1,
     },
@@ -85,5 +80,5 @@ export async function generateVendorBillNumber(
 
   const paddedNumber = String(sequence.lastNumber).padStart(4, "0");
 
-  return `VB/${params.branchCode}/${yearMonth}/${paddedNumber}`;
+  return `VB/${yearMonth}/${paddedNumber}`;
 }

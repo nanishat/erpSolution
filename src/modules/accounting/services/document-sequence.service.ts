@@ -15,8 +15,9 @@ function toYearMonth(date: Date): string {
 }
 
 /**
- * Atomically reserves the next sequence number for a voucher type + branch +
- * month, and returns the formatted document number, e.g. "JV/HO/202607/0001".
+ * Atomically reserves the next sequence number for a voucher type + month —
+ * shared across all branches — and returns the formatted document number,
+ * e.g. "JV/202607/0001".
  *
  * Must be called inside the same transaction that creates the JournalEntry:
  * an upsert with an atomic `increment` avoids the read-then-write race that a
@@ -26,21 +27,19 @@ function toYearMonth(date: Date): string {
  */
 export async function generateDocumentNumber(
   tx: Prisma.TransactionClient,
-  params: { voucherType: VoucherType; branchId: string; branchCode: string; date: Date }
+  params: { voucherType: VoucherType; date: Date }
 ): Promise<string> {
   const yearMonth = toYearMonth(params.date);
 
   const sequence = await tx.documentSequence.upsert({
     where: {
-      voucherType_branchId_yearMonth: {
+      voucherType_yearMonth: {
         voucherType: params.voucherType,
-        branchId: params.branchId,
         yearMonth,
       },
     },
     create: {
       voucherType: params.voucherType,
-      branchId: params.branchId,
       yearMonth,
       lastNumber: 1,
     },
@@ -52,5 +51,5 @@ export async function generateDocumentNumber(
   const shortCode = VOUCHER_TYPE_SHORT_CODE[params.voucherType];
   const paddedNumber = String(sequence.lastNumber).padStart(4, "0");
 
-  return `${shortCode}/${params.branchCode}/${yearMonth}/${paddedNumber}`;
+  return `${shortCode}/${yearMonth}/${paddedNumber}`;
 }

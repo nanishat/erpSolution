@@ -219,7 +219,7 @@ async function createJournalEntryWithClient(
 ): Promise<JournalEntryWithLines> {
   const branch = await tx.branch.findUnique({
     where: { id: input.branchId },
-    select: { code: true },
+    select: { id: true },
   });
   if (!branch) {
     throw new BranchNotFoundError(input.branchId);
@@ -227,8 +227,6 @@ async function createJournalEntryWithClient(
 
   const documentNumber = await generateDocumentNumber(tx, {
     voucherType: input.voucherType,
-    branchId: input.branchId,
-    branchCode: branch.code,
     date: input.date,
   });
 
@@ -372,7 +370,7 @@ async function reverseJournalEntryWithClient(
 
   const branch = await tx.branch.findUnique({
     where: { id: original.branchId },
-    select: { code: true },
+    select: { id: true },
   });
   if (!branch) {
     throw new BranchNotFoundError(original.branchId);
@@ -381,8 +379,6 @@ async function reverseJournalEntryWithClient(
   const reversalDate = new Date();
   const documentNumber = await generateDocumentNumber(tx, {
     voucherType: original.voucherType,
-    branchId: original.branchId,
-    branchCode: branch.code,
     date: reversalDate,
   });
 

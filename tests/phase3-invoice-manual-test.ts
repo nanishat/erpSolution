@@ -17,10 +17,11 @@
 // itself, safe to re-run, uses a `TEST ...`/timestamp-derived sector so
 // re-runs don't collide.
 //
-// Not covered: incrementing across a different BRANCH (only one branch, HO,
-// exists in this dev DB) or across a month boundary (would require
-// manipulating the invoice date across a real month rollover). Sector
-// boundaries and same-sector increments are covered below.
+// Not covered: a month boundary (would require manipulating the invoice date
+// across a real month rollover). The counter no longer keys on branch at all
+// (shared across all branches per sector+month), so a separate cross-branch
+// case isn't needed. Sector boundaries and same-sector increments are
+// covered below.
 import "dotenv/config";
 
 import { db } from "../src/lib/db";
@@ -157,8 +158,8 @@ async function main() {
   });
 
   check(
-    "Invoice number format is SECTOR/BRANCHCODE/YYYYMM/SEQ, sector uppercased",
-    new RegExp(`^${sectorUpper}/${branch.code}/\\d{6}/0001$`).test(invoice.invoiceNumber),
+    "Invoice number format is SECTOR/YYYYMM/SEQ, sector uppercased",
+    new RegExp(`^${sectorUpper}/\\d{6}/0001$`).test(invoice.invoiceNumber),
     `invoiceNumber=${invoice.invoiceNumber}`
   );
   check("Invoice starts DRAFT", invoice.status === "DRAFT", `status=${invoice.status}`);
@@ -224,8 +225,8 @@ async function main() {
     `totalDebit=${totalDebit} totalCredit=${totalCredit}`
   );
 
-  // --- 2. Second invoice, same sector/branch/month -> sequence increments ---
-  console.log("\n--- Invoice number increments within the same sector/branch/month ---");
+  // --- 2. Second invoice, same sector/month -> sequence increments ---
+  console.log("\n--- Invoice number increments within the same sector/month ---");
   const invoice2 = await createInvoiceViaSchema({
     partnerId: customer.id,
     direction: "CUSTOMER",
@@ -242,12 +243,12 @@ async function main() {
     ],
   });
   check(
-    "Second invoice in the same sector/branch/month gets seq 0002",
+    "Second invoice in the same sector/month gets seq 0002",
     invoice2.invoiceNumber === invoice.invoiceNumber.replace(/0001$/, "0002"),
     `invoiceNumber=${invoice2.invoiceNumber}`
   );
 
-  // --- 3. Different sector, same branch/month -> resets to 0001 ---
+  // --- 3. Different sector, same month -> resets to 0001 ---
   console.log("\n--- A different sector resets the sequence to 0001 ---");
   const otherSectorUpper = `${sectorUpper}X`;
   const invoice3 = await createInvoiceViaSchema({
@@ -262,7 +263,7 @@ async function main() {
   });
   check(
     "A different sector starts its own sequence at 0001",
-    new RegExp(`^${otherSectorUpper}/${branch.code}/\\d{6}/0001$`).test(invoice3.invoiceNumber),
+    new RegExp(`^${otherSectorUpper}/\\d{6}/0001$`).test(invoice3.invoiceNumber),
     `invoiceNumber=${invoice3.invoiceNumber}`
   );
 

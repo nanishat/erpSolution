@@ -7,7 +7,7 @@
 // covered by phase3-vendor-bill-manual-test.ts and
 // invoice-cancel-reverse-manual-test.ts — this script focuses on:
 //   1. end-to-end creation through the same POST /api/invoices InvoiceForm
-//      calls, with the correct VB/{Branch}/{YYYYMM}/{Seq} number and
+//      calls, with the correct VB/{YYYYMM}/{Seq} number and
 //      partner-type restriction,
 //   2. the client-side expense-account-only line filtering InvoiceForm now
 //      applies for direction: VENDOR — checked via the actual SSR'd HTML of
@@ -144,8 +144,8 @@ async function main() {
   const bill = createJson.data as { id: string; invoiceNumber: string; sector: string | null };
 
   check(
-    "invoiceNumber follows the VB/{Branch}/{YYYYMM}/{Seq} format (no sector segment)",
-    /^VB\/[A-Za-z0-9]+\/\d{6}\/\d{4}$/.test(bill.invoiceNumber),
+    "invoiceNumber follows the VB/{YYYYMM}/{Seq} format (no branch or sector segment)",
+    /^VB\/\d{6}\/\d{4}$/.test(bill.invoiceNumber),
     `invoiceNumber=${bill.invoiceNumber}`
   );
   check("sector is stored null for direction: VENDOR", bill.sector === null, `sector=${bill.sector}`);

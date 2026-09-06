@@ -307,7 +307,7 @@ export async function getInvoiceById(id: string): Promise<InvoiceWithLines | nul
  * (direction: CUSTOMER) and a Vendor Bill (direction: VENDOR):
  *
  * - direction: CUSTOMER requires partner.type === CUSTOMER, numbers via
- *   generateInvoiceNumber (Sector/Branch/YYYYMM/Seq — sector is required,
+ *   generateInvoiceNumber (Sector/YYYYMM/Seq — sector is required,
  *   per createInvoiceSchema), resolves each line's account via
  *   ProductService.incomeAccountId (required/non-null on that model), and
  *   builds a JournalEntry debiting Accounts Receivable / crediting grouped
@@ -428,13 +428,9 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<InvoiceW
       input.direction === "CUSTOMER"
         ? await generateInvoiceNumber(tx, {
             sector: input.sector,
-            branchId: input.branchId,
-            branchCode: branch.code,
             date: input.date,
           })
         : await generateVendorBillNumber(tx, {
-            branchId: input.branchId,
-            branchCode: branch.code,
             date: input.date,
           });
 
