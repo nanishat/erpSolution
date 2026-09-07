@@ -413,6 +413,17 @@ model InvoiceLine {
 // stored redundantly here. Service-layer invariant (Tuesday): sum of a
 // Payment's allocations' amountApplied + its creditGrant.originalAmount (if
 // any) must equal amount.
+//
+// `amount` (here), PaymentAllocation.amountApplied, PartnerCredit.
+// originalAmount/remainingAmount, and CreditApplication.amountApplied are
+// all also backed by a Postgres CHECK constraint (> 0, except
+// remainingAmount which allows exactly 0) — see migration
+// 20260907090000_add_payment_amount_check_constraints. Not representable
+// declaratively in this schema (Prisma has no CHECK-constraint attribute),
+// so it's DB-only and won't show up in a `prisma migrate diff` against this
+// file — mirrors payment.schema.ts's Zod `.positive()` validation, per the
+// "reject at Zod AND DB" requirement (first CHECK constraints in this repo;
+// no prior table has one, including TaxRate/TaxApplication's ratePercent).
 model Payment {
   id        String  @id @default(cuid())
   partnerId String

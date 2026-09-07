@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
-import { recordPaymentSchema } from "@/modules/payments/validations/payment.schema";
+import { recordPaymentForInvoiceSchema } from "@/modules/payments/validations/payment.schema";
 
 /**
  * Records a payment against one POSTED/PARTIALLY_PAID invoice — built now
@@ -13,7 +13,11 @@ import { recordPaymentSchema } from "@/modules/payments/validations/payment.sche
  * POST /api/invoices/[id]/payments route already exist and are already
  * tested (payment-manual-test.ts), so this is just the missing UI layer on
  * top of a finished backend, same shape of gap AddTaxApplicationForm filled
- * for tax applications.
+ * for tax applications. POST /api/invoices/[id]/payments is now a thin
+ * adapter over the general recordPayment (Phase 4's multi-invoice
+ * allocation + overpayment credit ledger rework) — this form's shape is
+ * unaffected, since branchId/partnerId/allocations are all derived
+ * server-side from the invoiceId in the URL.
  */
 export function RecordPaymentForm({
   invoiceId,
@@ -52,7 +56,7 @@ export function RecordPaymentForm({
       cashBankAccountId,
     };
 
-    const parsed = recordPaymentSchema.safeParse(payload);
+    const parsed = recordPaymentForInvoiceSchema.safeParse(payload);
     if (!parsed.success) {
       setFormError(parsed.error.issues[0]?.message ?? "Please fix the errors below.");
       return;

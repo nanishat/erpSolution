@@ -324,14 +324,22 @@ scripts.
 
 ### `payment-manual-test.ts`
 
-Covers the minimal single-invoice payment service (`payment.service.ts`) —
-just enough to move an `Invoice` from `POSTED` to `PARTIALLY_PAID`/`PAID`.
-Deliberately **not** full payment reconciliation: multi-invoice allocation,
-bank statement matching, and anything beyond "record a payment against one
-invoice" stay deferred to Phase 4 (Payments & Reconciliation). Exercises the
-real `POST /api/invoices/[id]/payments` endpoint; `Invoice`/`Payment` state
-after each call is read directly via Prisma (no `GET /api/invoices/[id]`
-route exists yet — same deviation as the other Phase 3 invoice scripts).
+Covers the legacy single-invoice payment call shape, now a thin adapter
+(`recordPaymentForInvoice` in `payment.service.ts`) over the general
+multi-invoice `recordPayment` added for Phase 4 — see
+`payment-phase4-manual-test.ts` below for that. Kept and still exercised
+unchanged (not retired) because `POST /api/invoices/[id]/payments` and
+`RecordPaymentForm.tsx` (the invoice detail page's "Record payment" UI) both
+still use this exact shape, and the adapter is built specifically to
+preserve this script's behavior byte-for-byte, including "overpayment
+against this one invoice is rejected outright, not turned into a credit" —
+a single-invoice call always allocates its full amount to that one invoice,
+so leftover is always 0 and the general engine's own
+remaining-balance-exceeded check fires exactly as the old dedicated check
+did. Exercises the real `POST /api/invoices/[id]/payments` endpoint;
+`Invoice`/`Payment` state after each call is read directly via Prisma (no
+`GET /api/invoices/[id]` route exists yet — same deviation as the other
+Phase 3 invoice scripts).
 
 `recordPayment` is atomic, not create-then-post like Invoice: `Payment` has
 no `status`/draft concept of its own, so its `JournalEntry` is created and
@@ -373,6 +381,66 @@ through `createInvoice` directly (no API/UI layer yet, same deviation as the
 other Phase 3 invoice scripts) and posting through the real
 `POST /api/invoices/[id]/post`. Same no-cleanup convention and
 `TEST ... <timestamp>` naming as the other scripts.
+
+### `payment-phase4-manual-test.ts`
+
+Covers the Phase 4 rework of `payment.service.ts`: `recordPayment` now takes
+a `partnerId` + `branchId` + an `allocations` array spanning any number of
+that partner's invoices (direction still inferred from `Partner.type`, never
+stored redundantly) instead of one fixed `invoiceId`, and a new
+`applyPartnerCredit` manually consumes an overpayment credit against a
+later invoice. `branchId` is a new required input not in the original task
+description — flagged because `JournalEntry.branchId` is `NOT NULL` and a
+`Partner` has no reliable non-null branch of its own to derive it from (an
+allocation's invoices can even span different branches). Exercises the real
+`POST /api/payments` and `POST /api/payments/credits/apply` endpoints (see
+`payment-manual-test.ts` above for the still-live legacy single-invoice
+shape, unaffected by this rework).
+
+- **Multi-invoice split payment**: one `Payment` of 10000 allocated 6000 /
+  4000 across two `CUSTOMER` invoices — both reach `PAID` with the correct
+  `amountPaid`, the `JournalEntry` has exactly 2 lines (Debit Cash 10000 /
+  Credit Accounts Receivable 10000, not one pair per invoice — a single
+  `Payment` is one cash movement against the AR control account regardless
+  of how many invoices it settles), `outstandingBalance` decreases by
+  exactly 10000; isolation proof — `payableBalance` seeded with a noise
+  value first, asserted bit-for-bit unchanged
+- **Overpayment creates a `PartnerCredit`**: paying 7000 against a single
+  5000 invoice allocates only 5000 to it (still reaches `PAID`, not
+  overpaid) and creates an `OPEN` `PartnerCredit` with
+  `originalAmount = remainingAmount = 2000` (the leftover).
+  **`outstandingBalance` decreases by the full 7000 paid, not just the 5000
+  allocated** — the `JournalEntry` credits Accounts Receivable for the full
+  cash received, so the control-total balance mirrors that; the unapplied
+  2000 sits as a negative sub-balance within that same total until later
+  applied via `applyPartnerCredit`, tracked separately (and positively) via
+  `Partner.creditBalance`, which increases by exactly the 2000 leftover
+- **`applyPartnerCredit`**: applying 1500 of the 2000 credit to a third
+  invoice settles it to `PAID`, drops the credit's `remainingAmount` to 500
+  (`status` -> `PARTIALLY_APPLIED`), and decreases `creditBalance` by 1500 —
+  **without** touching `outstandingBalance` (isolation proof: bit-for-bit
+  unchanged) or creating any new `JournalEntry` (total `JournalEntry` row
+  count unchanged) — the cash was already recognized when the original
+  overpayment posted. Applying the remaining 500 to a fourth invoice drives
+  the credit to `remainingAmount = 0`, `status` -> `FULLY_APPLIED`
+- Allocating more than an invoice's own remaining balance is rejected with
+  `409` (`PaymentExceedsRemainingBalanceError`), leaving that invoice
+  untouched — distinct from the next case
+- Allocations summing to more than the payment's own `amount` (an
+  over-allocation, not an overpayment) is rejected with `400`
+  (`PaymentAllocationExceedsAmountError`, also caught earlier by
+  `recordPaymentSchema`'s own `superRefine`), leaving every allocated
+  invoice untouched
+- **Direction isolation for a `VENDOR` bill**: paying a `VENDOR` bill in
+  full posts a `JournalEntry` with the debit/credit sides swapped from the
+  `CUSTOMER` case (Debit Accounts Payable / Credit Cash), decreases
+  `payableBalance` by the full amount; isolation proof — `outstandingBalance`
+  seeded with a different noise value, asserted bit-for-bit unchanged
+
+Same fixture/account conventions as `payment-manual-test.ts` (`1010`/`4010`/
+`5010` from `prisma/seed-coa.ts`, `createInvoice` called directly, posting
+through the real `POST /api/invoices/[id]/post`). Same no-cleanup
+convention and `TEST ... <timestamp>` naming as the other scripts.
 
 ### `debit-voucher-manual-test.ts`
 
