@@ -171,6 +171,62 @@ export async function getInvoiceRemainingBalance(
   return roundCurrency(Number(invoice.grandTotal) - applied);
 }
 
+export type OpenInvoiceOption = {
+  id: string;
+  invoiceNumber: string;
+  date: Date;
+  grandTotal: number;
+  amountPaid: number;
+  status: string;
+  remainingBalance: number;
+};
+
+/**
+ * A partner's invoices/bills still open for payment — POSTED or
+ * PARTIALLY_PAID, direction-aware from Partner.type same as recordPayment
+ * (CUSTOMER -> their Customer Invoices, VENDOR -> their Vendor Bills) — for
+ * the manual-matching payment picker UI. remainingBalance is computed the
+ * same way recordPayment validates against it (getInvoiceRemainingBalance,
+ * i.e. grandTotal minus BOTH prior PaymentAllocations and prior
+ * CreditApplications), so a row's displayed remaining balance is exactly the
+ * most this invoice can still absorb.
+ */
+export async function getOpenInvoicesForPartner(partnerId: string): Promise<OpenInvoiceOption[]> {
+  const partner = await db.partner.findUnique({
+    where: { id: partnerId },
+    select: { id: true, type: true },
+  });
+  if (!partner) {
+    throw new PartnerNotFoundError(partnerId);
+  }
+
+  const direction = partner.type === "CUSTOMER" ? "CUSTOMER" : "VENDOR";
+  const invoices = await db.invoice.findMany({
+    where: { partnerId, direction, status: { in: ["POSTED", "PARTIALLY_PAID"] } },
+    orderBy: { date: "asc" },
+    select: {
+      id: true,
+      invoiceNumber: true,
+      date: true,
+      grandTotal: true,
+      amountPaid: true,
+      status: true,
+    },
+  });
+
+  return Promise.all(
+    invoices.map(async (invoice) => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      date: invoice.date,
+      grandTotal: Number(invoice.grandTotal),
+      amountPaid: Number(invoice.amountPaid),
+      status: invoice.status,
+      remainingBalance: await getInvoiceRemainingBalance(invoice.id),
+    }))
+  );
+}
+
 /**
  * Records a Payment from/to a Partner (direction inferred from
  * Partner.type — never stored redundantly), optionally allocated across

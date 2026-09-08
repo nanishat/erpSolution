@@ -471,3 +471,79 @@ Two extra `OPERATING_EXPENSE` fixtures are created through the existing
 has one expense account (`5010`). Branch is read directly via Prisma (same
 deviation as `phase1-ledger-manual-test.ts`). Same no-cleanup convention and
 `TEST ... <timestamp>` naming as the other scripts.
+
+### `payment-partial-matching-chain-test.ts`
+
+Chained-scenario test resolving a previously-unconfirmed interaction between
+"full-amount balance decrement on overpayment" (`recordPayment`) and
+`applyPartnerCredit`: does applying a credit that already sits inside the
+control-total (from the overpayment step) get decremented a *second* time
+against `outstandingBalance`/`payableBalance` when it's later applied to a
+specific invoice? Walks the exact scenario end to end, using a brand-new
+`Partner` per side so the checked numbers are the literal scenario numbers
+(not deltas against a seeded noise value), mirrored independently on both
+the `CUSTOMER`/`outstandingBalance` and `VENDOR`/`payableBalance` sides:
+
+1. Invoice/Bill A posts for `1000` -> control balance `1000`
+2. Pay `1200` against it (`1000` allocated, `200` overpaid) -> control
+   balance `-200` (decremented by the full amount paid, not just what was
+   allocated), `creditBalance` `+200`
+3. Invoice/Bill B posts for `500` -> control balance `300`
+4. Apply the `200` credit to Invoice/Bill B -> control balance **stays at
+   `300`**, confirmed NOT to drop to `100` — `applyPartnerCredit` in
+   `payment.service.ts` never touches `outstandingBalance`/`payableBalance`
+   (only `creditBalance` and the target invoice's own `amountPaid`/`status`
+   move), so the credit is only re-attributed to a specific invoice here,
+   not recognized as new cash a second time. Result: **no bug found**, this
+   test is the confirming proof, not a regression fix.
+
+Exercises the real HTTP API throughout (`POST /api/partners`, `POST
+/api/payments`, `POST /api/payments/credits/apply`, `GET /api/partners/[id]`
+for balance reads); invoice creation goes through `createInvoice` directly
+and posting through the real `POST /api/invoices/[id]/post` (same deviation
+as the other Phase 3/4 invoice scripts). Same no-cleanup convention and
+`TEST ... <timestamp>` naming as the other scripts.
+
+### `payment-open-invoices-and-general-payment-ui-test.ts`
+
+Covers the Phase 4 UI surface built on top of the general `recordPayment`
+engine, which previously had no UI beyond the legacy single-invoice adapter
+(`payment-manual-test.ts`'s `RecordPaymentForm`/`POST
+/api/invoices/[id]/payments`, unmodified and unaffected):
+
+- **`GET /api/partners/[id]/open-invoices`** (`getOpenInvoicesForPartner` in
+  `payment.service.ts`, new): 404 for a nonexistent partner; direction-aware
+  (a `CUSTOMER` partner's open invoices never include a `VENDOR`'s bills and
+  vice versa); `remainingBalance` reflects `grandTotal` minus **both** prior
+  `PaymentAllocation`s and prior `CreditApplication`s (not just payments) —
+  proven by partially paying an invoice, then separately applying a
+  partner-credit to a different invoice and confirming both show the
+  correct reduced `remainingBalance`; a fully-settled (`PAID`) invoice drops
+  out of the list entirely (only `POSTED`/`PARTIALLY_PAID` qualify)
+- **`/accounting/payments/new`** (`RecordPaymentForm.tsx` in the `payments`
+  module — a new general multi-invoice/bill form, distinct from
+  `invoicing/RecordPaymentForm.tsx`'s legacy single-invoice adapter, which
+  is untouched): the sidebar has a "New Payment" nav link to it (deliberately
+  *not* labeled "Record Payment" — that exact text is already
+  `InvoiceDetailActions.tsx`'s per-invoice action button, and since
+  `DashboardShell`'s sidebar renders on every page, reusing it would make
+  `invoice-ui-manual-test.ts`/`vendor-bill-ui-manual-test.ts`'s "PAID/DRAFT
+  detail page shows no action buttons" markup checks see a false positive
+  from the sidebar link instead of the button they're actually testing);
+  the page renders its heading and, per the documented RSC-hydration-payload
+  footgun (see `product-service-ui-manual-test.ts`), a freshly-created
+  partner's name appears as a genuinely rendered `<option>` (`appearsRendered`
+  checking `>text<`) rather than merely present somewhere in the page's
+  serialized RSC payload — this also caught a real bug during development:
+  the option's `{name} ({type})` JSX rendered as adjacent expressions, which
+  React separates with `<!-- -->` hydration-boundary comments, so the fix
+  was to interpolate one single template-literal string per option instead
+- **Round-trip through the real `POST /api/payments` route** (not just the
+  service function): confirms the response shape/serialization at the route
+  layer (`amount`, `allocations[].amountApplied`, `journalEntry.status`)
+
+The open-invoices picker itself is populated by a client-side fetch after
+the user selects a partner — never present in the initial SSR payload at
+all — so it's checked directly against the `GET` endpoint's JSON rather
+than through page markup. Same fixture/account conventions and no-cleanup,
+`TEST ... <timestamp>` naming as the other Phase 3/4 payment scripts.
