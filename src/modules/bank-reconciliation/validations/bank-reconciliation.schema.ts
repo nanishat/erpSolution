@@ -38,7 +38,17 @@ export const unmatchLineSchema = z.object({
   bankStatementLineId: z.string().min(1, "Bank statement line is required"),
 });
 
+export const ignoreLineSchema = z.object({
+  bankStatementLineId: z.string().min(1, "Bank statement line is required"),
+});
+
+export const unignoreLineSchema = z.object({
+  bankStatementLineId: z.string().min(1, "Bank statement line is required"),
+});
+
 export type ImportBankStatementLineInput = z.infer<typeof importBankStatementLineSchema>;
 export type ImportBankStatementInput = z.infer<typeof importBankStatementSchema>;
 export type ConfirmMatchInput = z.infer<typeof confirmMatchSchema>;
 export type UnmatchLineInput = z.infer<typeof unmatchLineSchema>;
+export type IgnoreLineInput = z.infer<typeof ignoreLineSchema>;
+export type UnignoreLineInput = z.infer<typeof unignoreLineSchema>;

@@ -3,7 +3,9 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type {
   ConfirmMatchInput,
+  IgnoreLineInput,
   ImportBankStatementInput,
+  UnignoreLineInput,
   UnmatchLineInput,
 } from "@/modules/bank-reconciliation/validations/bank-reconciliation.schema";
 
@@ -92,6 +94,20 @@ export class LineNotMatchedError extends Error {
   constructor(id: string, status: string) {
     super(`Bank statement line ${id} is ${status}, not MATCHED — nothing to unmatch`);
     this.name = "LineNotMatchedError";
+  }
+}
+
+export class LineNotUnmatchedError extends Error {
+  constructor(id: string, status: string) {
+    super(`Bank statement line ${id} is ${status}, not UNMATCHED — cannot ignore it`);
+    this.name = "LineNotUnmatchedError";
+  }
+}
+
+export class LineNotIgnoredError extends Error {
+  constructor(id: string, status: string) {
+    super(`Bank statement line ${id} is ${status}, not IGNORED — nothing to unignore`);
+    this.name = "LineNotIgnoredError";
   }
 }
 
@@ -184,10 +200,14 @@ function serializeStatement(statement: BankStatementRow): BankStatementDTO {
 
 /**
  * Derives BankStatement.status from its lines' current matchStatus —
- * IMPORTED (nothing resolved yet) -> IN_PROGRESS (some MATCHED, at least one
- * still UNMATCHED) -> RECONCILED (no UNMATCHED lines left). Recomputed after
- * every confirmMatch/unmatchLine call rather than tracked independently, so
- * it can never drift from the lines' actual state.
+ * IMPORTED (nothing resolved yet) -> IN_PROGRESS (some resolved, at least one
+ * still UNMATCHED) -> RECONCILED (no UNMATCHED lines left). MATCHED and
+ * IGNORED both count as "resolved" for both the IN_PROGRESS and RECONCILED
+ * transitions — a statement with only IGNORED lines so far is exactly as
+ * much "in progress" as one with only MATCHED lines, not indistinguishable
+ * from a fresh, untouched IMPORTED statement. Recomputed after every
+ * confirmMatch/unmatchLine/ignoreLine/unignoreLine call rather than tracked
+ * independently, so it can never drift from the lines' actual state.
  */
 function deriveBankStatementStatus(
   lines: { matchStatus: string }[]
@@ -198,7 +218,7 @@ function deriveBankStatementStatus(
   if (lines.every((line) => line.matchStatus !== "UNMATCHED")) {
     return "RECONCILED";
   }
-  return lines.some((line) => line.matchStatus === "MATCHED") ? "IN_PROGRESS" : "IMPORTED";
+  return lines.some((line) => line.matchStatus !== "UNMATCHED") ? "IN_PROGRESS" : "IMPORTED";
 }
 
 async function syncBankStatementStatus(
@@ -453,6 +473,74 @@ export async function unmatchLine(
         matchedAt: null,
         matchedById: null,
       },
+    });
+
+    await syncBankStatementStatus(tx, line.bankStatementId);
+
+    return serializeLine(updated);
+  });
+}
+
+/**
+ * Marks a line IGNORED — a deliberate "this will never have a matching
+ * JournalLine" decision (e.g. a bank fee/interest line with no ledger
+ * counterpart), distinct from UNMATCHED's "not resolved yet". Only a still-
+ * UNMATCHED line can be ignored (same precondition shape as confirmMatch);
+ * an already-MATCHED line must be unmatched first. No note/reason is
+ * persisted — BankStatementLine has no column for one and none is added
+ * here (confirmed decision: don't silently extend the table for an optional
+ * free-text field nothing yet reads).
+ */
+export async function ignoreLine(
+  bankStatementId: string,
+  input: IgnoreLineInput
+): Promise<BankStatementLineDTO> {
+  return db.$transaction(async (tx) => {
+    const line = await tx.bankStatementLine.findUnique({ where: { id: input.bankStatementLineId } });
+    if (!line) {
+      throw new BankStatementLineNotFoundError(input.bankStatementLineId);
+    }
+    if (line.bankStatementId !== bankStatementId) {
+      throw new BankStatementLineMismatchError(line.id, bankStatementId);
+    }
+    if (line.matchStatus !== "UNMATCHED") {
+      throw new LineNotUnmatchedError(line.id, line.matchStatus);
+    }
+
+    const updated = await tx.bankStatementLine.update({
+      where: { id: line.id },
+      data: { matchStatus: "IGNORED" },
+    });
+
+    await syncBankStatementStatus(tx, line.bankStatementId);
+
+    return serializeLine(updated);
+  });
+}
+
+/**
+ * Reverses ignoreLine — symmetric with unmatchLine, just for the IGNORED
+ * side of the state machine instead of MATCHED.
+ */
+export async function unignoreLine(
+  bankStatementId: string,
+  input: UnignoreLineInput
+): Promise<BankStatementLineDTO> {
+  return db.$transaction(async (tx) => {
+    const line = await tx.bankStatementLine.findUnique({ where: { id: input.bankStatementLineId } });
+    if (!line) {
+      throw new BankStatementLineNotFoundError(input.bankStatementLineId);
+    }
+    if (line.bankStatementId !== bankStatementId) {
+      throw new BankStatementLineMismatchError(line.id, bankStatementId);
+    }
+    if (line.matchStatus !== "IGNORED") {
+      throw new LineNotIgnoredError(line.id, line.matchStatus);
+    }
+
+    const updated = await tx.bankStatementLine.update({
+      where: { id: line.id },
+      data: { matchStatus: "UNMATCHED" },
     });
 
     await syncBankStatementStatus(tx, line.bankStatementId);

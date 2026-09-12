@@ -102,6 +102,20 @@ async function unmatchViaApi(statementId: string, bankStatementLineId: string) {
   });
 }
 
+async function ignoreViaApi(statementId: string, bankStatementLineId: string) {
+  return api(`/api/bank-reconciliation/statements/${statementId}/ignore`, {
+    method: "POST",
+    body: JSON.stringify({ bankStatementLineId }),
+  });
+}
+
+async function unignoreViaApi(statementId: string, bankStatementLineId: string) {
+  return api(`/api/bank-reconciliation/statements/${statementId}/unignore`, {
+    method: "POST",
+    body: JSON.stringify({ bankStatementLineId }),
+  });
+}
+
 async function getSummary(statementId: string) {
   const { res, json } = await api(`/api/bank-reconciliation/statements/${statementId}/summary`);
   if (!res.ok) {
@@ -615,6 +629,99 @@ async function main() {
     "Matching a line from statement 2 via statement 1's URL is rejected (400)",
     crossRes.status === 400,
     `status=${crossRes.status} body=${JSON.stringify(crossJson)}`
+  );
+
+  // ============================================================
+  // 9. ignoreLine/unignoreLine round trip + mixed MATCHED+IGNORED -> RECONCILED
+  // (TEST <stamp>) — closes the gap flagged when confirmMatch's amount
+  // check was added: IGNORED had a DB enum value but no route/service ever
+  // set it. At this point statement 1 has lineA/lineB MATCHED, lineC back
+  // to UNMATCHED (unmatched in section 6, jlPay3 freed), and lineD
+  // (Bank fee) still UNMATCHED (the amount-mismatch attempt in section 4b
+  // was rejected, so it was never actually claimed).
+  // ============================================================
+  console.log(`\n--- ignoreLine/unignoreLine (TEST ${stamp}) ---`);
+
+  const statementBeforeIgnore = await db.bankStatement.findUniqueOrThrow({ where: { id: statementId } });
+  check(
+    `TEST ${stamp}: statement is IN_PROGRESS before ignoring (lineC and lineD still UNMATCHED)`,
+    statementBeforeIgnore.status === "IN_PROGRESS",
+    `status=${statementBeforeIgnore.status}`
+  );
+
+  const { res: ignoreDRes, json: ignoreDJson } = await ignoreViaApi(statementId, lineD.id);
+  check(
+    `TEST ${stamp}: ignoreLine marks Bank fee IGNORED`,
+    ignoreDRes.status === 200 && ignoreDJson.data.matchStatus === "IGNORED",
+    `status=${ignoreDRes.status} body=${JSON.stringify(ignoreDJson)}`
+  );
+
+  const { res: reIgnoreDRes } = await ignoreViaApi(statementId, lineD.id);
+  check(
+    `TEST ${stamp}: ignoring an already-IGNORED line is rejected (409)`,
+    reIgnoreDRes.status === 409,
+    `status=${reIgnoreDRes.status}`
+  );
+
+  const { res: unignoreDRes, json: unignoreDJson } = await unignoreViaApi(statementId, lineD.id);
+  check(
+    `TEST ${stamp}: unignoreLine reverses Bank fee back to UNMATCHED (round trip)`,
+    unignoreDRes.status === 200 &&
+      unignoreDJson.data.matchStatus === "UNMATCHED" &&
+      unignoreDJson.data.matchedJournalLineId === null,
+    `status=${unignoreDRes.status} body=${JSON.stringify(unignoreDJson)}`
+  );
+
+  const { res: unignoreAgainRes } = await unignoreViaApi(statementId, lineD.id);
+  check(
+    `TEST ${stamp}: unignoring a line that's UNMATCHED (not IGNORED) is rejected (409)`,
+    unignoreAgainRes.status === 409,
+    `status=${unignoreAgainRes.status}`
+  );
+
+  const { res: ignoreMissingRes } = await ignoreViaApi(statementId, "nonexistent-line-id");
+  check(
+    `TEST ${stamp}: ignoring a nonexistent BankStatementLine is rejected (404)`,
+    ignoreMissingRes.status === 404,
+    `status=${ignoreMissingRes.status}`
+  );
+
+  const { res: crossIgnoreRes } = await ignoreViaApi(statementId, lineE.id);
+  check(
+    `TEST ${stamp}: ignoring a line from statement 2 via statement 1's URL is rejected (400)`,
+    crossIgnoreRes.status === 400,
+    `status=${crossIgnoreRes.status}`
+  );
+
+  // Drive statement 1 all the way to RECONCILED via a MIX of MATCHED and
+  // IGNORED, not all-MATCHED (section 7 already proves the all-MATCHED
+  // case): re-match lineC to jlPay3 (freed back in section 6), then ignore
+  // lineD for good.
+  const { res: rematchCRes } = await confirmMatchViaApi(statementId, lineC.id, jlPay3.id);
+  check(`TEST ${stamp}: Vendor payment re-matches jlPay3`, rematchCRes.status === 200, `status=${rematchCRes.status}`);
+
+  const { res: ignoreDForGoodRes } = await ignoreViaApi(statementId, lineD.id);
+  check(
+    `TEST ${stamp}: Bank fee ignored for good`,
+    ignoreDForGoodRes.status === 200,
+    `status=${ignoreDForGoodRes.status}`
+  );
+
+  const statementAfterMix = await db.bankStatement.findUniqueOrThrow({ where: { id: statementId } });
+  check(
+    `TEST ${stamp}: BankStatement reaches RECONCILED via MATCHED(A,B,C) + IGNORED(D) — not all-MATCHED`,
+    statementAfterMix.status === "RECONCILED",
+    `status=${statementAfterMix.status}`
+  );
+
+  const summaryMix = await getSummary(statementId);
+  check(
+    `TEST ${stamp}: summary reports matchedCount=3, ignoredCount=1, unmatchedCount=0, isReconciled=true`,
+    summaryMix.matchedCount === 3 &&
+      summaryMix.ignoredCount === 1 &&
+      summaryMix.unmatchedCount === 0 &&
+      summaryMix.isReconciled === true,
+    `summary=${JSON.stringify(summaryMix)}`
   );
 
   console.log(`\n=== ${pass} passed, ${fail} failed ===`);

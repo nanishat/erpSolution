@@ -10,7 +10,9 @@ import {
   JournalLineAlreadyMatchedError,
   JournalLineNotFoundError,
   LineAlreadyMatchedError,
+  LineNotIgnoredError,
   LineNotMatchedError,
+  LineNotUnmatchedError,
   ReconciliationAccountNotFoundError,
 } from "@/modules/bank-reconciliation/services/bank-reconciliation.service";
 
@@ -25,7 +27,9 @@ export function bankReconciliationErrorResponse(error: unknown): NextResponse {
   if (
     error instanceof LineAlreadyMatchedError ||
     error instanceof JournalLineAlreadyMatchedError ||
-    error instanceof LineNotMatchedError
+    error instanceof LineNotMatchedError ||
+    error instanceof LineNotUnmatchedError ||
+    error instanceof LineNotIgnoredError
   ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }
