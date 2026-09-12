@@ -20,6 +20,9 @@ model User {
   invoices        Invoice[]
   payments        Payment[]
   fixedAssets     FixedAsset[]
+
+  bankStatementsImported    BankStatement[]
+  bankStatementLinesMatched BankStatementLine[]
 }
 
 model Branch {
@@ -100,6 +103,12 @@ model JournalLine {
   bankName   String?
   chequeNo   String?
   chequeDate DateTime?
+
+  // Bank reconciliation back-relation only — the FK (matchedJournalLineId)
+  // lives on BankStatementLine, so this is a pure back-relation with no
+  // fields/references of its own and adds no column here, same pattern as
+  // JournalEntry.invoice/JournalEntry.payment above.
+  matchedBankStatementLine BankStatementLine?
 
   @@index([journalEntryId])
   @@index([accountId])
@@ -199,6 +208,11 @@ model ChartOfAccount {
   fixedAssetsAsAsset               FixedAsset[] @relation("FixedAssetAccount")
   fixedAssetsAsAccumDepreciation   FixedAsset[] @relation("FixedAssetAccumDepreciation")
   fixedAssetsAsDepreciationExpense FixedAsset[] @relation("FixedAssetDepreciationExpense")
+
+  // Bank reconciliation — which BankStatement rows are imported against this
+  // account. Eligibility (isReconcilable, above) is enforced in
+  // importBankStatement, not a DB constraint.
+  bankStatements BankStatement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -777,4 +791,96 @@ enum CreditStatus {
   PARTIALLY_APPLIED
   FULLY_APPLIED
   VOID
+}
+
+enum BankStatementStatus {
+  IMPORTED // just landed, nothing matched yet
+  IN_PROGRESS // at least one line matched, not all
+  RECONCILED // every line MATCHED or IGNORED (see getReconciliationSummary)
+}
+
+enum BankStatementLineMatchStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED // deliberately excluded from matching (e.g. a bank fee/interest
+  // line with no corresponding JournalLine yet) — still counts toward
+  // "reconciled" for status purposes, distinct from an outstanding UNMATCHED
+  // line
+}
+
+// Bank Reconciliation (Phase 4, last piece). A statement line matches
+// against JournalLine — NOT Payment — so reconciliation is source-agnostic:
+// it can match a Payment's cash line, a Cash Voucher's cash line, or any
+// other voucher type that posted to a Cash/Bank ChartOfAccount, since every
+// cash/bank movement in this system bottoms out at JournalLine regardless of
+// which feature created it. Basic exact-match pass only: matching is
+// strictly 1:1 (matchedJournalLineId is @unique below) — no split/many-to-
+// many matching (one statement line covering two ledger lines, or vice
+// versa) in this pass; flagged as a future enhancement if needed.
+//
+// Immutability: MATCHING never touches JournalEntry/JournalLine's financial
+// fields — confirmMatch/unmatchLine only set/clear the FK + audit fields on
+// BankStatementLine itself, read-only with respect to the posted ledger.
+model BankStatement {
+  id String @id @default(cuid())
+
+  accountId String
+  account   ChartOfAccount @relation(fields: [accountId], references: [id])
+  // Must be isReconcilable (validated in importBankStatement, not a DB
+  // constraint — Prisma can't check a related row's boolean at the FK level,
+  // same reasoning as Invoice.partnerId's CUSTOMER/VENDOR direction check).
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  openingBalance Decimal @db.Decimal(18, 2)
+  closingBalance Decimal @db.Decimal(18, 2)
+  // As stated by the bank — can legitimately be negative (overdraft), so no
+  // positivity CHECK constraint here, same as Partner.outstandingBalance/
+  // payableBalance.
+
+  status BankStatementStatus @default(IMPORTED)
+
+  importedById Int?
+  importedBy   User?    @relation(fields: [importedById], references: [id])
+  importedAt   DateTime @default(now())
+
+  lines BankStatementLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+}
+
+model BankStatementLine {
+  id              String        @id @default(cuid())
+  bankStatementId String
+  bankStatement   BankStatement @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+
+  date        DateTime
+  description String
+  amount      Decimal @db.Decimal(18, 2) // signed: positive = inflow/deposit,
+  // negative = outflow/withdrawal, per the confirmed decision. CHECK <> 0
+  // below — a zero-amount line isn't a real bank movement.
+  referenceNo String? // cheque/transaction reference, if present on the statement
+
+  matchStatus BankStatementLineMatchStatus @default(UNMATCHED)
+
+  // Nullable 1:1 to the ledger side of a confirmed match. @unique so the same
+  // JournalLine can't be claimed by two statement lines. Per the confirmed
+  // decision, JournalLine itself carries no physical reconciliation column —
+  // this FK (plus matchedAt/matchedById below) is the sole source of match
+  // state.
+  matchedJournalLineId String?      @unique
+  matchedJournalLine   JournalLine? @relation(fields: [matchedJournalLineId], references: [id])
+  matchedAt            DateTime?
+  matchedById          Int?
+  matchedBy            User?        @relation(fields: [matchedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([bankStatementId])
+  @@index([matchStatus])
 }
