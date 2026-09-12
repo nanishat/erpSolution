@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   AccountMismatchError,
+  AmountMismatchError,
   BankStatementBalanceMismatchError,
   BankStatementLineMismatchError,
   BankStatementLineNotFoundError,
@@ -32,6 +33,7 @@ export function bankReconciliationErrorResponse(error: unknown): NextResponse {
     error instanceof ReconciliationAccountNotFoundError ||
     error instanceof BankStatementBalanceMismatchError ||
     error instanceof AccountMismatchError ||
+    error instanceof AmountMismatchError ||
     error instanceof BankStatementLineMismatchError
   ) {
     return NextResponse.json({ error: error.message }, { status: 400 });

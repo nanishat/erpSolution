@@ -450,6 +450,46 @@ async function main() {
   const { res: matchCRes } = await confirmMatchViaApi(statementId, lineC.id, jlPay3.id);
   check("Vendor payment matches jlPay3", matchCRes.status === 200, `status=${matchCRes.status}`);
 
+  // ------------------------------------------------------------
+  // 4b. AmountMismatchError — TEST <stamp> (added because confirmMatch
+  // previously only checked "both unmatched, same account", not that the
+  // amounts actually agree; this closes that gap). Both sides are real
+  // UNMATCHED rows on the same reconcilable account so the account guard
+  // passes, but lineD (Bank fee, -50, an outflow) does not correspond to
+  // jlPay4 (a debit/inflow of fullMatchAmount) — neither the sign nor the
+  // magnitude line up. Both jlPay4 and lineD are still untouched by any
+  // earlier check in this script (jlPay4 isn't matched until section 7,
+  // lineD isn't matched until this file's very last unmatch checks below),
+  // so this is a clean mismatched-amount attempt, not a side effect of an
+  // already-consumed fixture.
+  // ------------------------------------------------------------
+  console.log(`\n--- confirmMatch: amount-mismatch rejection (TEST ${stamp}) ---`);
+
+  const { res: mismatchMatchRes, json: mismatchMatchJson } = await confirmMatchViaApi(
+    statementId,
+    lineD.id,
+    jlPay4.id
+  );
+  check(
+    `TEST ${stamp}: matching Bank fee (-${bankFeeAmount}) to jlPay4 (debit ${fullMatchAmount}) is rejected — amounts don't agree`,
+    mismatchMatchRes.status === 400,
+    `status=${mismatchMatchRes.status} body=${JSON.stringify(mismatchMatchJson)}`
+  );
+
+  const lineDAfterRejectedMatch = await db.bankStatementLine.findUniqueOrThrow({ where: { id: lineD.id } });
+  check(
+    `TEST ${stamp}: rejected amount-mismatch attempt left Bank fee line still UNMATCHED`,
+    lineDAfterRejectedMatch.matchStatus === "UNMATCHED" && lineDAfterRejectedMatch.matchedJournalLineId === null,
+    `matchStatus=${lineDAfterRejectedMatch.matchStatus} matchedJournalLineId=${lineDAfterRejectedMatch.matchedJournalLineId}`
+  );
+
+  const jlPay4AfterRejectedMatch = await db.journalLine.findUniqueOrThrow({ where: { id: jlPay4.id } });
+  check(
+    `TEST ${stamp}: rejected amount-mismatch attempt left jlPay4 unclaimed (still matchable in section 7 below)`,
+    jlPay4AfterRejectedMatch.debit.toString() === jlPay4.debit.toString(),
+    `debit=${jlPay4AfterRejectedMatch.debit}`
+  );
+
   // ============================================================
   // 5. getReconciliationSummary — mix of matched/unmatched
   // ============================================================

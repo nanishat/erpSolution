@@ -72,6 +72,22 @@ export class AccountMismatchError extends Error {
   }
 }
 
+// The whole point of reconciliation: a match is only valid if the bank's
+// signed amount agrees with the ledger side. A JournalLine debiting the
+// reconcilable account (inflow) must pair with a positive statement line of
+// the same magnitude; a credit (outflow) must pair with a negative one.
+// Exact match only, normalized through roundCurrency like every other
+// Decimal(18,2) comparison in this file — no fuzzy tolerance.
+export class AmountMismatchError extends Error {
+  constructor(bankStatementLineId: string, journalLineId: string, lineAmount: number, expectedAmount: number) {
+    super(
+      `Bank statement line ${bankStatementLineId} (amount ${lineAmount}) does not match journal line ` +
+        `${journalLineId}'s expected amount (${expectedAmount})`
+    );
+    this.name = "AmountMismatchError";
+  }
+}
+
 export class LineNotMatchedError extends Error {
   constructor(id: string, status: string) {
     super(`Bank statement line ${id} is ${status}, not MATCHED — nothing to unmatch`);
@@ -338,13 +354,15 @@ export async function suggestMatches(bankStatementId: string): Promise<LineSugge
 
 /**
  * The actual matching action — suggestMatches only suggests, this confirms.
- * Validates both sides are unmatched and on the same account, then marks the
- * statement line MATCHED (status + matchedAt/matchedById) and points it at
- * the JournalLine via the unique matchedJournalLineId FK. Does not require
- * the amount to exactly equal a suggestMatches candidate — a human
- * confirming a match is trusted to have looked at it, same manual-first
- * trust already given to applyPartnerCredit. Never touches JournalLine's own
- * financial fields (debit/credit/memo/etc.) or JournalEntry at all.
+ * Validates both sides are unmatched, on the same account, AND that the
+ * statement line's signed amount agrees with the JournalLine's debit/credit
+ * (see AmountMismatchError) — a human can still confirm any candidate
+ * suggestMatches didn't surface, but the amounts themselves must line up
+ * exactly; confirming a mismatched pair would defeat the point of
+ * reconciliation. Then marks the statement line MATCHED (status +
+ * matchedAt/matchedById) and points it at the JournalLine via the unique
+ * matchedJournalLineId FK. Never touches JournalLine's own financial fields
+ * (debit/credit/memo/etc.) or JournalEntry at all.
  */
 export async function confirmMatch(
   bankStatementId: string,
@@ -377,6 +395,14 @@ export async function confirmMatch(
     }
     if (journalLine.accountId !== line.bankStatement.accountId) {
       throw new AccountMismatchError(line.id, journalLine.id);
+    }
+
+    const lineAmount = roundCurrency(Number(line.amount));
+    const debit = roundCurrency(Number(journalLine.debit));
+    const credit = roundCurrency(Number(journalLine.credit));
+    const expectedAmount = debit !== 0 ? debit : -credit;
+    if (lineAmount !== expectedAmount) {
+      throw new AmountMismatchError(line.id, journalLine.id, lineAmount, expectedAmount);
     }
 
     const updated = await tx.bankStatementLine.update({
