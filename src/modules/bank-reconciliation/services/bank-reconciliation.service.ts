@@ -295,6 +295,62 @@ export async function getBankStatementById(id: string): Promise<BankStatementDTO
   return statement ? serializeStatement(statement) : null;
 }
 
+export type BankStatementListItemDTO = {
+  id: string;
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  periodStart: Date;
+  periodEnd: Date;
+  openingBalance: number;
+  closingBalance: number;
+  status: string;
+  importedAt: Date;
+  totalLines: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  ignoredCount: number;
+};
+
+/**
+ * For the statement list page — one row per BankStatement with its account
+ * label and a per-line matchStatus breakdown, without pulling every line's
+ * full detail (getBankStatementById is for that, at the single-statement
+ * level). Newest import first.
+ */
+export async function listBankStatements(): Promise<BankStatementListItemDTO[]> {
+  const statements = await db.bankStatement.findMany({
+    orderBy: { importedAt: "desc" },
+    include: {
+      account: { select: { code: true, name: true } },
+      lines: { select: { matchStatus: true } },
+    },
+  });
+
+  return statements.map((statement) => {
+    const matchedCount = statement.lines.filter((line) => line.matchStatus === "MATCHED").length;
+    const unmatchedCount = statement.lines.filter((line) => line.matchStatus === "UNMATCHED").length;
+    const ignoredCount = statement.lines.filter((line) => line.matchStatus === "IGNORED").length;
+
+    return {
+      id: statement.id,
+      accountId: statement.accountId,
+      accountCode: statement.account.code,
+      accountName: statement.account.name,
+      periodStart: statement.periodStart,
+      periodEnd: statement.periodEnd,
+      openingBalance: Number(statement.openingBalance),
+      closingBalance: Number(statement.closingBalance),
+      status: statement.status,
+      importedAt: statement.importedAt,
+      totalLines: statement.lines.length,
+      matchedCount,
+      unmatchedCount,
+      ignoredCount,
+    };
+  });
+}
+
 export type MatchCandidate = {
   journalLineId: string;
   journalEntryId: string;

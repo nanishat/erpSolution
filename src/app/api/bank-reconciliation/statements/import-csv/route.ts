@@ -15,6 +15,15 @@ import { importBankStatementSchema } from "@/modules/bank-reconciliation/validat
 // referenceNo }[] shape the JSON route already accepts, then hands off to
 // the exact same importBankStatementSchema + importBankStatement pipeline.
 // No balance/isReconcilable/amount-sign validation is duplicated here.
+//
+// A `dryRun` form field ("true") stops right after a successful parse and
+// returns the parsed lines without ever calling importBankStatement — the
+// import UI's preview step uses this to show the user what will be
+// imported (and let them eyeball the balance) before anything is written.
+// A dry run does not require accountId/period/balance fields at all, since
+// those play no part in CSV parsing itself; the real commit call below is
+// still the only place importBankStatementSchema/importBankStatement (and
+// therefore the balance-tolerance check) ever run.
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
 
@@ -54,6 +63,10 @@ export async function POST(request: NextRequest) {
         },
         { status: 422 }
       );
+    }
+
+    if (formData.get("dryRun") === "true") {
+      return NextResponse.json({ data: { lines: result.lines } }, { status: 200 });
     }
 
     const body = {

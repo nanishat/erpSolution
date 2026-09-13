@@ -76,6 +76,18 @@ export async function getActiveChartOfAccounts(): Promise<ChartOfAccountOption[]
   });
 }
 
+// For the bank-reconciliation import picker — same shape as
+// getActiveChartOfAccounts, further narrowed to isReconcilable so a user
+// can't pick an account importBankStatement would reject anyway
+// (ReconciliationAccountNotFoundError).
+export async function getReconcilableChartOfAccounts(): Promise<ChartOfAccountOption[]> {
+  return db.chartOfAccount.findMany({
+    where: { isActive: true, isReconcilable: true },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, name: true, subType: true },
+  });
+}
+
 export async function listChartOfAccounts(
   filter: ListChartOfAccountsQuery
 ): Promise<ChartOfAccountWithChildren[]> {

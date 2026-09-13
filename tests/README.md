@@ -616,3 +616,53 @@ Reads the seeded Cash account (`1010`) via `GET /api/accounts`, same
 fixture convention as `bank-reconciliation-manual-test.ts`. No cleanup,
 `TEST ... <timestamp>` naming (`uniq` offsets keep amounts from colliding
 with rows any other run/script may have left behind).
+
+### `bank-statement-import-ui-manual-test.ts`
+
+Covers the import UI built on top of the CSV import API above:
+`/accounting/bank-reconciliation` (statement list) and
+`/accounting/bank-reconciliation/import` (account/period/balance form + CSV
+upload + column-mapping + preview stepper, `ImportBankStatementForm.tsx`).
+The stepper only advances via client-side JS (`dryRun` fetch calls against
+the same `import-csv` route), so — same convention as
+`product-service-ui-manual-test.ts`/`phase2-partner-ui-manual-test.ts` — this
+asserts server-rendered markup for the static parts and drives the same
+dryRun/columnMapping/commit sequence the stepper's handlers make directly
+against the route for behavior.
+
+A new `dryRun` form field on `POST
+/api/bank-reconciliation/statements/import-csv` (added alongside this UI)
+parses and, if needed, resolves column mapping exactly like a real commit,
+but returns the parsed lines without ever calling `importBankStatement` —
+this is what lets the import page show a "preview parsed lines before
+committing" step at all, since the endpoint previously always committed on
+a successful parse. `dryRun` needs neither `accountId` nor period/balance
+fields, since CSV parsing doesn't depend on them.
+
+- `/accounting/bank-reconciliation/import` renders its heading, an input/
+  select for every field (`accountId`, `file`, `periodStart`, `periodEnd`,
+  `openingBalance`, `closingBalance`), and the newly-created reconcilable
+  account appears as a genuinely rendered `<option>` (`appearsRendered`)
+  — `getReconcilableChartOfAccounts` only offers `isActive && isReconcilable`
+  accounts, so this also proves the picker is wired to the right query
+- `dryRun=true` on a well-formed single-Amount-column CSV returns the parsed
+  lines with `200` and writes no `BankStatement` row
+- `dryRun=true` on unrecognized headers returns the same `422
+  needsColumnMapping` shape a real commit would; supplying an explicit
+  `columnMapping` resolves the same dryRun preview
+- Committing (`dryRun` omitted) creates the statement, which then appears on
+  `/accounting/bank-reconciliation` with its account label and an
+  `>Imported<` status badge rendered (not just present in the RSC hydration
+  payload) — `listBankStatements`'s per-status line counts feed
+  `BankStatementTable`/`BankStatementStatusBadge`, both new
+- **Balance-mismatch error surfacing**: a deliberately-off-by-1.00 commit is
+  rejected `400` with an error message that names the actual opening/sum/
+  closing numbers (not a generic "import failed"), no stray `BankStatement`
+  row is left behind, and a client-side discrepancy computed the same way
+  the preview step would (`opening + dryRun lines' sum - closing`) is
+  confirmed to land on the exact same `-1.00` the server rejection is based
+  on — proving the preview step surfaces the real discrepancy ahead of a
+  commit attempt, not just after one fails
+
+Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
+scripts.
