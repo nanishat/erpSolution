@@ -24,6 +24,17 @@ Each script prints `PASS -` / `FAIL -` lines per assertion and a final
 `=== N passed, M failed ===` summary, plus the actual numbers it checked
 (not just pass/fail) so you can eyeball the data.
 
+### Running the whole suite in one pass
+
+`npx tsx tests/run-all.ts` runs every script in this directory (itself
+excluded) in sequence, re-printing each one's own output, then aggregates
+their `=== N passed, M failed ===` lines into one combined
+`=== <files> files, <assertions> assertions: <passed> passed, <failed>
+failed, <crashed> file(s) crashed ===` line. Same prerequisites as running
+any individual script (dev server + dev DB up). Not a real test runner —
+just a sequencer, since none of these scripts stop being real HTTP/DB
+integration tests.
+
 ## Scripts
 
 ### `phase1-ledger-manual-test.ts`
@@ -547,3 +558,61 @@ the user selects a partner — never present in the initial SSR payload at
 all — so it's checked directly against the `GET` endpoint's JSON rather
 than through page markup. Same fixture/account conventions and no-cleanup,
 `TEST ... <timestamp>` naming as the other Phase 3/4 payment scripts.
+
+### `bank-statement-csv-parser-test.ts`
+
+Covers `parseBankStatementCsv` (`bank-statement-csv-parser.ts`) — the CSV
+parsing layer that feeds INTO `importBankStatement`, added on top of the
+existing structured-array import. Pure-function unit test: **needs neither
+the dev server nor the dev DB**, unlike every other script here, since the
+parser does no I/O of its own.
+
+- A well-formed CSV with a single signed `Amount` column parses correctly,
+  including a quoted field containing an embedded comma and an empty
+  optional `Reference` cell coming through as `undefined`
+- Headers that don't match any known Date/Description/Amount variant, two
+  headers both matching the same field (e.g. two "date"-like columns), and a
+  file with both a single `Amount` column AND `Debit`/`Credit` columns all
+  return `{ status: "needs_mapping" }` (carrying the raw headers + a few
+  sample rows) instead of guessing or hard-rejecting; supplying an explicit
+  `columnMapping` for the same ambiguous file resolves it, and a mapping
+  naming a column that doesn't exist in the file is rejected
+  (`CsvColumnMappingError`)
+- **Debit/Credit sign conversion** (the decision that matters most to get
+  right): a credit-only row becomes a positive amount, a debit-only row
+  becomes a negative amount, and a debit cell that's already
+  parenthesized/negative-looking is normalized via `Math.abs()` before being
+  re-negated — proving it isn't double-flipped to positive
+- A data row with fewer columns than the header row (`CsvMalformedRowError`),
+  a file over the 2MB size cap (`CsvFileTooLargeError`), and a file with more
+  than 5,000 data rows (`CsvTooManyRowsError`) are all rejected; exactly
+  5,000 data rows (the limit itself) is accepted
+
+### `bank-statement-csv-import-manual-test.ts`
+
+Integration counterpart to the parser test above: exercises the real
+`POST /api/bank-reconciliation/statements/import-csv` multipart/form-data
+route end to end, proving the CSV layer hands off to the *same*
+`importBankStatementSchema`/`importBankStatement` the JSON route
+(`bank-reconciliation-manual-test.ts`) uses — no validation is duplicated
+in the CSV path.
+
+- A well-formed single-`Amount`-column CSV imports successfully; the
+  resulting `BankStatementLine`s' amounts/reference round-trip correctly
+- **Sign-convention proof**: a Debit/Credit CSV is only accepted because
+  `importBankStatement`'s own unmodified `opening + sum(lines) == closing`
+  balance check passes — if credit→positive/debit→negative were backwards,
+  this exact-equality check (reused as-is, not re-implemented here) would
+  reject the import with a 400. Confirmed further by asserting the credit
+  row's line lands positive and the debit row's lands negative
+- An unrecognized-header CSV returns `422` with `needsColumnMapping: true`
+  and the raw headers; re-submitting the same file with an explicit
+  `columnMapping` form field succeeds
+- A ragged (short) data row and an oversized (>2MB) file are both rejected
+  cleanly (`400` / `413`, not `500`), and neither rejected attempt leaves a
+  stray `BankStatement` row behind
+
+Reads the seeded Cash account (`1010`) via `GET /api/accounts`, same
+fixture convention as `bank-reconciliation-manual-test.ts`. No cleanup,
+`TEST ... <timestamp>` naming (`uniq` offsets keep amounts from colliding
+with rows any other run/script may have left behind).
