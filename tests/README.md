@@ -666,3 +666,54 @@ fields, since CSV parsing doesn't depend on them.
 
 Same no-cleanup convention and `TEST ... <timestamp>` naming as the other
 scripts.
+
+### `bank-statement-detail-ui-manual-test.ts`
+
+Covers the per-statement detail page, `/accounting/bank-reconciliation/[id]`
+(`BankStatementLineList.tsx` + `useBankStatementLineActions.ts`), built on
+top of the confirmMatch/unmatchLine/ignoreLine/unignoreLine service+API layer
+already covered end to end by `bank-reconciliation-manual-test.ts`. Same
+markup-assertion convention as the other UI scripts (`appearsRendered`,
+`>value<`) — the detail page's summary stats are deliberately rendered as
+one `"Label: value"` text node each (e.g. `">Matched: 2<"`) specifically so
+a test can assert on an exact rendered string instead of a bare digit that
+could coincide with an unrelated number elsewhere on the page. `bank-
+reconciliation.service.ts` gained an `account` (code/name) select on
+`bankStatementInclude` and a `matchedJournalLine` (document number, date,
+description, debit/credit) select alongside it, both consumed by the DTOs
+this page renders, so every line — regardless of which action produced it —
+carries what a MATCHED line is actually matched to instead of just its bare
+`matchedJournalLineId`.
+
+Fixture recipe mirrors `bank-reconciliation-manual-test.ts`: a real POSTED
+Payment `JournalLine` on the seeded Cash account (`1010`) is the "deposit"
+line's match candidate; a fixed-amount fee line with no `JournalLine`
+counterpart proves the "no candidates found" / ignore path.
+
+- Initial render (both lines `UNMATCHED`): heading shows the account label,
+  `Imported` status badge, summary reads `Matched: 0` / `Unmatched: 2` /
+  `Ignored: 0` / `Total lines: 2`, the deposit line's real fixture
+  `JournalLine` appears as a rendered candidate (by document number), and
+  the fee line (no candidate) shows "No matching journal lines found"
+- **Confirm match**: `POST .../match` on the deposit line against its real
+  candidate, then the page shows `Matched to <documentNumber>`, the badge
+  moves to `In Progress`, and the summary updates to `Matched: 1` /
+  `Unmatched: 1`
+- **Ignore**: `POST .../ignore` on the fee line, then the page shows
+  "Ignored — excluded from matching.", the badge moves to `Reconciled` (no
+  `UNMATCHED` lines left), and the summary updates to `Ignored: 1` /
+  `Unmatched: 0`
+- **Unmatch**: `POST .../unmatch` on the deposit line reverses it — the
+  "Matched to" text disappears, its candidate resurfaces, the badge reverts
+  to `In Progress`, and the summary updates to `Matched: 0` / `Unmatched: 1`
+- **Unignore**: `POST .../unignore` on the fee line reverses it — the badge
+  reverts all the way to `Imported` (nothing resolved), the summary reads
+  `Unmatched: 2` / `Ignored: 0` again, and "No matching journal lines found"
+  reappears
+
+No auto-match/bulk-apply path exists anywhere in `BankStatementLineList.tsx`
+or its hook — every one of the four actions above is one explicit,
+single-line, single-candidate `fetch` call triggered by one button click,
+same manual-first convention as Cash Voucher direction/PartnerCredit
+application. Same no-cleanup convention and `TEST ... <timestamp>` naming as
+the other scripts.

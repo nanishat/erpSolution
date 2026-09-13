@@ -129,12 +129,26 @@ function roundCurrency(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 
+// Shared with confirmMatch/unmatchLine/ignoreLine/unignoreLine's own final
+// update() calls below, so every BankStatementLineDTO — regardless of which
+// function produced it — consistently carries the matched JournalLine's
+// display info (statement detail page: "show what a MATCHED line is matched
+// to"), not just its bare id.
+const matchedJournalLineInclude = {
+  matchedJournalLine: {
+    include: {
+      journalEntry: { select: { id: true, documentNumber: true, date: true, description: true } },
+    },
+  },
+} satisfies Prisma.BankStatementLineInclude;
+
 const bankStatementInclude = {
-  lines: { orderBy: { date: "asc" } },
+  account: { select: { code: true, name: true } },
+  lines: { orderBy: { date: "asc" }, include: matchedJournalLineInclude },
 } satisfies Prisma.BankStatementInclude;
 
 type BankStatementRow = Prisma.BankStatementGetPayload<{ include: typeof bankStatementInclude }>;
-type BankStatementLineRow = BankStatementRow["lines"][number];
+type BankStatementLineRow = Prisma.BankStatementLineGetPayload<{ include: typeof matchedJournalLineInclude }>;
 
 export type BankStatementLineDTO = {
   id: string;
@@ -145,6 +159,7 @@ export type BankStatementLineDTO = {
   referenceNo: string | null;
   matchStatus: string;
   matchedJournalLineId: string | null;
+  matchedJournalLine: MatchCandidate | null;
   matchedAt: Date | null;
   matchedById: number | null;
   createdAt: Date;
@@ -153,6 +168,8 @@ export type BankStatementLineDTO = {
 export type BankStatementDTO = {
   id: string;
   accountId: string;
+  accountCode: string;
+  accountName: string;
   periodStart: Date;
   periodEnd: Date;
   openingBalance: number;
@@ -175,6 +192,17 @@ function serializeLine(line: BankStatementLineRow): BankStatementLineDTO {
     referenceNo: line.referenceNo,
     matchStatus: line.matchStatus,
     matchedJournalLineId: line.matchedJournalLineId,
+    matchedJournalLine: line.matchedJournalLine
+      ? {
+          journalLineId: line.matchedJournalLine.id,
+          journalEntryId: line.matchedJournalLine.journalEntry.id,
+          documentNumber: line.matchedJournalLine.journalEntry.documentNumber,
+          date: line.matchedJournalLine.journalEntry.date,
+          description: line.matchedJournalLine.memo ?? line.matchedJournalLine.journalEntry.description,
+          debit: Number(line.matchedJournalLine.debit),
+          credit: Number(line.matchedJournalLine.credit),
+        }
+      : null,
     matchedAt: line.matchedAt,
     matchedById: line.matchedById,
     createdAt: line.createdAt,
@@ -185,6 +213,8 @@ function serializeStatement(statement: BankStatementRow): BankStatementDTO {
   return {
     id: statement.id,
     accountId: statement.accountId,
+    accountCode: statement.account.code,
+    accountName: statement.account.name,
     periodStart: statement.periodStart,
     periodEnd: statement.periodEnd,
     openingBalance: Number(statement.openingBalance),
@@ -489,6 +519,7 @@ export async function confirmMatch(
         matchedAt: new Date(),
         matchedById: input.matchedById,
       },
+      include: matchedJournalLineInclude,
     });
 
     await syncBankStatementStatus(tx, line.bankStatementId);
@@ -529,6 +560,7 @@ export async function unmatchLine(
         matchedAt: null,
         matchedById: null,
       },
+      include: matchedJournalLineInclude,
     });
 
     await syncBankStatementStatus(tx, line.bankStatementId);
@@ -566,6 +598,7 @@ export async function ignoreLine(
     const updated = await tx.bankStatementLine.update({
       where: { id: line.id },
       data: { matchStatus: "IGNORED" },
+      include: matchedJournalLineInclude,
     });
 
     await syncBankStatementStatus(tx, line.bankStatementId);
@@ -597,6 +630,7 @@ export async function unignoreLine(
     const updated = await tx.bankStatementLine.update({
       where: { id: line.id },
       data: { matchStatus: "UNMATCHED" },
+      include: matchedJournalLineInclude,
     });
 
     await syncBankStatementStatus(tx, line.bankStatementId);

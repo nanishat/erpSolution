@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { BankStatementListItemDTO } from "@/modules/bank-reconciliation/services/bank-reconciliation.service";
 import { BankStatementStatusBadge } from "@/modules/bank-reconciliation/components/BankStatementStatusBadge";
 
@@ -27,7 +29,14 @@ export function BankStatementTable({ statements }: { statements: BankStatementLi
         <tbody>
           {statements.map((statement) => (
             <tr key={statement.id} className="border-t border-border">
-              <td className="px-3 py-2">{`${statement.accountCode} — ${statement.accountName}`}</td>
+              <td className="px-3 py-2">
+                <Link
+                  href={`/accounting/bank-reconciliation/${statement.id}`}
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  {`${statement.accountCode} — ${statement.accountName}`}
+                </Link>
+              </td>
               <td className="px-3 py-2">
                 {`${statement.periodStart.toLocaleDateString()} – ${statement.periodEnd.toLocaleDateString()}`}
               </td>
