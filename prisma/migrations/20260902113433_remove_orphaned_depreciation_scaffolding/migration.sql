@@ -26,10 +26,21 @@ BEGIN;
 DROP TABLE IF EXISTS "DepreciationEntry";
 DROP TABLE IF EXISTS "DepreciationRun";
 
-DELETE FROM "JournalLine" WHERE "journalEntryId" IN (
-  SELECT id FROM "JournalEntry" WHERE "voucherType" = 'DEPRECIATION_VOUCHER'
-);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_enum e
+    JOIN pg_type t ON t.oid = e.enumtypid
+    WHERE t.typname = 'VoucherType'
+      AND e.enumlabel = 'DEPRECIATION_VOUCHER'
+  ) THEN
+    EXECUTE 'DELETE FROM "JournalLine" WHERE "journalEntryId" IN (
+      SELECT id FROM "JournalEntry" WHERE "voucherType" = ''DEPRECIATION_VOUCHER''
+    )';
 
-DELETE FROM "JournalEntry" WHERE "voucherType" = 'DEPRECIATION_VOUCHER';
+    EXECUTE 'DELETE FROM "JournalEntry" WHERE "voucherType" = ''DEPRECIATION_VOUCHER''';
+  END IF;
+END $$;
 
 COMMIT;
