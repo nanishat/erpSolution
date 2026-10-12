@@ -52,6 +52,7 @@ type ChartOfAccountFormValues = {
   subType: AccountSubType | "";
   parentId: string;
   isReconcilable: boolean;
+  isPostable: boolean;
   isActive: boolean;
 };
 
@@ -96,6 +97,7 @@ export function ChartOfAccountForm({
       subType: account?.subType ?? "",
       parentId: account?.parentId ?? "",
       isReconcilable: account?.isReconcilable ?? false,
+      isPostable: account?.isPostable ?? true,
       isActive: account?.isActive ?? true,
     },
   });
@@ -131,6 +133,7 @@ export function ChartOfAccountForm({
             subType: values.subType || undefined,
             parentId: values.parentId || undefined,
             isReconcilable: values.isReconcilable,
+            isPostable: values.isPostable,
           }
         : {
             code: isSystem ? undefined : values.code,
@@ -140,6 +143,7 @@ export function ChartOfAccountForm({
             subType: values.subType || null,
             parentId: hasChildren ? undefined : values.parentId || null,
             isReconcilable: values.isReconcilable,
+            isPostable: values.isPostable,
             isActive: values.isActive,
           };
 
@@ -303,6 +307,10 @@ export function ChartOfAccountForm({
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" {...register("isReconcilable")} />
           Reconcilable
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" {...register("isPostable")} />
+          Postable
         </label>
         {mode === "edit" && (
           <label className="flex items-center gap-2 text-sm font-medium">

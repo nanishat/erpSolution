@@ -110,7 +110,7 @@ export function ChartOfAccountTable({
               <table className="w-full text-sm">
                 <thead className="bg-muted text-left text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 text-xs font-semibold uppercase" colSpan={6}>
+                    <th className="px-3 py-2 text-xs font-semibold uppercase" colSpan={7}>
                       {group.type}
                     </th>
                   </tr>
@@ -120,6 +120,7 @@ export function ChartOfAccountTable({
                     <th className="px-3 py-2">Parent</th>
                     <th className="px-3 py-2">Sub type</th>
                     <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Posting</th>
                     <th className="px-3 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -150,6 +151,7 @@ export function ChartOfAccountTable({
                         </td>
                         <td className="px-3 py-2">{account.subType ?? "—"}</td>
                         <td className="px-3 py-2">{account.isActive ? "Active" : "Inactive"}</td>
+                        <td className="px-3 py-2">{account.isPostable ? "Postable" : "Header only"}</td>
                         <td className="px-3 py-2 text-right">
                           <Link
                             href={`/accounting/chart-of-accounts/${account.id}/edit`}

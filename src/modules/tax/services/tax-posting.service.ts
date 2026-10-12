@@ -1,5 +1,7 @@
 import type { AccountSubType, Prisma, TaxDirection, TaxType } from "@prisma/client";
 
+import { assertAccountPostable } from "@/modules/accounting/services/account-postability.service";
+
 export const VAT_PAYABLE_CODE = "2110";
 export const VAT_RECEIVABLE_CODE = "1210";
 export const TDS_PAYABLE_CODE = "2120";
@@ -180,6 +182,8 @@ export async function postTaxApplicationLines(
     if (taxAmount > settlementAmount) {
       throw new TaxAmountExceedsSettlementError(taxApplication.id, taxAmount, settlementAmount);
     }
+
+    await assertAccountPostable(tx, [settlementLine.accountId, taxAccount.id]);
 
     await tx.journalLine.createMany({
       data: [

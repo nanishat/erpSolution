@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { assertAccountPostable } from "@/modules/accounting/services/account-postability.service";
 import { generateDocumentNumber } from "@/modules/accounting/services/document-sequence.service";
 import type {
   JournalEntryInput,
@@ -225,6 +226,11 @@ async function createJournalEntryWithClient(
     throw new BranchNotFoundError(input.branchId);
   }
 
+  await assertAccountPostable(
+    tx,
+    input.lines.map((line) => line.accountId)
+  );
+
   const documentNumber = await generateDocumentNumber(tx, {
     voucherType: input.voucherType,
     date: input.date,
@@ -318,6 +324,11 @@ export async function updateJournalEntry(
       );
     }
 
+    await assertAccountPostable(
+      tx,
+      input.lines.map((line) => line.accountId)
+    );
+
     await tx.journalLine.deleteMany({ where: { journalEntryId: entryId } });
 
     const updated = await tx.journalEntry.update({
@@ -367,6 +378,11 @@ async function reverseJournalEntryWithClient(
   if (original.status === "VOID" || original.reversedByEntry) {
     throw new JournalEntryAlreadyReversedError(entryId);
   }
+
+  await assertAccountPostable(
+    tx,
+    original.lines.map((line) => line.accountId)
+  );
 
   const branch = await tx.branch.findUnique({
     where: { id: original.branchId },
@@ -541,6 +557,11 @@ async function postJournalEntryWithClient(
   if (inactiveLine) {
     throw new InactiveAccountJournalLineError(inactiveLine.accountId);
   }
+
+  await assertAccountPostable(
+    tx,
+    entry.lines.map((line) => line.accountId)
+  );
 
   // Adds the JournalLine pair for every tax application on this entry (VAT
   // Payable/Receivable, TDS/VDS Payable) right before posting — see

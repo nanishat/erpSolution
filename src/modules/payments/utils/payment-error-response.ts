@@ -4,6 +4,7 @@ import {
   InactiveAccountJournalLineError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
+import { NonPostableAccountJournalLineError } from "@/modules/accounting/services/account-postability.service";
 import {
   AccountsPayableNotConfiguredError,
   AccountsReceivableNotConfiguredError,
@@ -45,6 +46,7 @@ export function paymentErrorResponse(error: unknown): NextResponse {
     error instanceof AccountsPayableNotConfiguredError ||
     error instanceof UnbalancedJournalEntryError ||
     error instanceof InactiveAccountJournalLineError ||
+    error instanceof NonPostableAccountJournalLineError ||
     error instanceof PaymentAllocationExceedsAmountError ||
     error instanceof InvoiceBelongsToDifferentPartnerError ||
     error instanceof InvoiceDirectionMismatchError ||

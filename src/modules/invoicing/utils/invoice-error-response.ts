@@ -12,6 +12,7 @@ import {
   JournalEntryVoidError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
+import { NonPostableAccountJournalLineError } from "@/modules/accounting/services/account-postability.service";
 import {
   AccountsPayableNotConfiguredError,
   AccountsReceivableNotConfiguredError,
@@ -65,6 +66,7 @@ export function invoiceErrorResponse(error: unknown): NextResponse {
     error instanceof UnbalancedJournalEntryError ||
     error instanceof UnbalancedInvoiceJournalEntryError ||
     error instanceof InactiveAccountJournalLineError ||
+    error instanceof NonPostableAccountJournalLineError ||
     error instanceof BranchNotFoundError ||
     error instanceof PartnerNotCustomerError ||
     error instanceof PartnerNotVendorError ||

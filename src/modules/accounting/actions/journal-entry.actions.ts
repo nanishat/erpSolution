@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { NonPostableAccountJournalLineError } from "@/modules/accounting/services/account-postability.service";
 import {
   BranchNotFoundError,
   createJournalEntry,
@@ -35,7 +36,10 @@ export async function createJournalEntryAction(
     revalidatePath("/accounting");
     return { success: true, entryId: entry.id };
   } catch (error) {
-    if (error instanceof BranchNotFoundError) {
+    if (
+      error instanceof BranchNotFoundError ||
+      error instanceof NonPostableAccountJournalLineError
+    ) {
       return { success: false, error: error.message };
     }
     return { success: false, error: "Failed to create journal entry." };

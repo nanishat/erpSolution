@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { assertAccountPostable } from "@/modules/accounting/services/account-postability.service";
 import { generateDocumentNumber } from "@/modules/accounting/services/document-sequence.service";
 import {
   BranchNotFoundError,
@@ -76,6 +77,11 @@ async function createDebitVoucherWithClient(
     ).sort((a, b) => a - b);
     throw new BankDetailsRequiredError(lineNumbers);
   }
+
+  await assertAccountPostable(tx, [
+    input.cashBankAccountId,
+    ...input.lines.map((line) => line.expenseAccountId),
+  ]);
 
   const totalAmount = input.lines.reduce((sum, line) => sum + line.amount, 0);
 

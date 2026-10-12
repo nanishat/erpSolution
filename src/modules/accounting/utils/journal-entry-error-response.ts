@@ -18,6 +18,7 @@ import {
   JournalEntryVoidError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
+import { NonPostableAccountJournalLineError } from "@/modules/accounting/services/account-postability.service";
 import {
   TaxAccountNotConfiguredError,
   TaxAmountExceedsSettlementError,
@@ -44,6 +45,7 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
   if (
     error instanceof UnbalancedJournalEntryError ||
     error instanceof InactiveAccountJournalLineError ||
+    error instanceof NonPostableAccountJournalLineError ||
     error instanceof BranchNotFoundError ||
     error instanceof CashBankAccountNotFoundError ||
     error instanceof BankDetailsRequiredError ||

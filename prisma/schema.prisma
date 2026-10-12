@@ -187,6 +187,7 @@ model ChartOfAccount {
 
   isActive       Boolean @default(true)
   isReconcilable Boolean @default(false)
+  isPostable     Boolean @default(true)
   isSystem       Boolean @default(false)
 
   currencyCode       String    @default("BDT")

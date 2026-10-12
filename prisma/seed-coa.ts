@@ -6,19 +6,19 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const assets = await prisma.chartOfAccount.create({
-    data: { code: "1000", name: "Assets", type: "ASSET", isSystem: true },
+    data: { code: "1000", name: "Assets", type: "ASSET", isSystem: true, isPostable: false },
   });
   const liabilities = await prisma.chartOfAccount.create({
-    data: { code: "2000", name: "Liabilities", type: "LIABILITY", isSystem: true },
+    data: { code: "2000", name: "Liabilities", type: "LIABILITY", isSystem: true, isPostable: false },
   });
   await prisma.chartOfAccount.create({
     data: { code: "3000", name: "Equity", type: "EQUITY", isSystem: true },
   });
   const revenue = await prisma.chartOfAccount.create({
-    data: { code: "4000", name: "Revenue", type: "REVENUE", isSystem: true },
+    data: { code: "4000", name: "Revenue", type: "REVENUE", isSystem: true, isPostable: false },
   });
   const expense = await prisma.chartOfAccount.create({
-    data: { code: "5000", name: "Expense", type: "EXPENSE", isSystem: true },
+    data: { code: "5000", name: "Expense", type: "EXPENSE", isSystem: true, isPostable: false },
   });
 
   await prisma.chartOfAccount.createMany({

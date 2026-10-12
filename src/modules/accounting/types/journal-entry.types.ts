@@ -7,4 +7,5 @@ export type ChartOfAccountOption = {
   code: string;
   name: string;
   subType: AccountSubType | null;
+  isPostable: boolean;
 };

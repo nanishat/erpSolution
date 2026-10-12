@@ -70,9 +70,9 @@ function serializeChartOfAccount(account: ChartOfAccountRow): ChartOfAccountWith
 
 export async function getActiveChartOfAccounts(): Promise<ChartOfAccountOption[]> {
   return db.chartOfAccount.findMany({
-    where: { isActive: true },
+    where: { isActive: true, isPostable: true },
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true, subType: true },
+    select: { id: true, code: true, name: true, subType: true, isPostable: true },
   });
 }
 
@@ -82,9 +82,9 @@ export async function getActiveChartOfAccounts(): Promise<ChartOfAccountOption[]
 // (ReconciliationAccountNotFoundError).
 export async function getReconcilableChartOfAccounts(): Promise<ChartOfAccountOption[]> {
   return db.chartOfAccount.findMany({
-    where: { isActive: true, isReconcilable: true },
+    where: { isActive: true, isReconcilable: true, isPostable: true },
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true, subType: true },
+    select: { id: true, code: true, name: true, subType: true, isPostable: true },
   });
 }
 
@@ -186,6 +186,7 @@ export async function createChartOfAccount(
           subType: input.subType,
           parentId: input.parentId,
           isReconcilable: input.isReconcilable ?? false,
+          isPostable: input.isPostable ?? true,
           currencyCode: input.currencyCode,
           openingBalance: input.openingBalance,
           openingBalanceDate: input.openingBalanceDate,
@@ -276,6 +277,7 @@ export async function updateChartOfAccount(
           parentId: input.parentId,
           isActive: input.isActive,
           isReconcilable: input.isReconcilable,
+          isPostable: input.isPostable,
           currencyCode: input.currencyCode,
           openingBalance: input.openingBalance,
           openingBalanceDate: input.openingBalanceDate,

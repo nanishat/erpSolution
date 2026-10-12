@@ -37,6 +37,16 @@ integration tests.
 
 ## Scripts
 
+### `account-postability-manual-test.ts`
+
+Checks the persisted postability default and strict boolean schemas, then
+exercises JournalEntry create/update/post and Debit Voucher create rejection
+for a non-postable header account. Stale draft entries are inserted directly
+as fixtures to verify update failures do not mutate lines and post failures
+leave entries DRAFT. It also checks rendered edit-form option markup omits
+header accounts and that reversing a normally-postable entry still works.
+Fixtures are deleted in a `finally` block.
+
 ### `phase1-ledger-manual-test.ts`
 
 End-to-end pass through the Phase 1 Core Ledger Engine: creates one journal
