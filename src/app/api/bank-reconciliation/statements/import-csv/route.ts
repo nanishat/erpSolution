@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
           headers: result.headers,
           detected: result.detected,
           sampleRows: result.sampleRows,
+          dateFormatRequired: result.dateFormatRequired,
         },
         { status: 422 }
       );

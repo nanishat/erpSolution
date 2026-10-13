@@ -113,6 +113,8 @@ export class CsvColumnMappingError extends Error {
   }
 }
 
+export type CsvDateFormat = "ISO" | "DMY" | "MDY";
+
 export type CsvColumnMapping = {
   date: string;
   description: string;
@@ -120,6 +122,7 @@ export type CsvColumnMapping = {
   debit?: string;
   credit?: string;
   referenceNo?: string;
+  dateFormat?: CsvDateFormat;
 };
 
 export type ParsedBankStatementLine = {
@@ -144,6 +147,7 @@ export type CsvParsePreview = {
   headers: string[];
   detected: DetectedColumns;
   sampleRows: string[][];
+  dateFormatRequired?: boolean;
 };
 
 export type CsvParseSuccess = {
@@ -264,6 +268,12 @@ function detectColumns(headers: string[]): { detected: DetectedColumns; ambiguou
 function resolveMapping(headers: string[], columnMapping?: CsvColumnMapping): CsvParsePreview | CsvColumnMapping {
   if (columnMapping) {
     for (const [field, headerName] of Object.entries(columnMapping)) {
+      if (field === "dateFormat") {
+        if (headerName !== undefined && !["ISO", "DMY", "MDY"].includes(headerName)) {
+          throw new CsvColumnMappingError("Date format must be ISO, DMY, or MDY");
+        }
+        continue;
+      }
       if (headerName !== undefined && !headers.includes(headerName)) {
         throw new CsvColumnMappingError(`Mapped column "${headerName}" for "${field}" is not a header in this file`);
       }
@@ -309,23 +319,99 @@ function resolveMapping(headers: string[], columnMapping?: CsvColumnMapping): Cs
   };
 }
 
-// Accepts formats JS's Date parser handles natively (ISO 8601, and common
-// "Month D, YYYY" / RFC-2822-ish forms) plus a couple of common bank export
-// shapes checked explicitly first. Ambiguous numeric formats like DD/MM/YYYY
-// vs MM/DD/YYYY are NOT disambiguated by locale — `new Date(...)`'s
-// slash-separated fallback assumes MM/DD/YYYY (US convention). This is a
-// known limitation of this basic pass, not a silent guess: callers feeding
-// DD/MM-formatted exports should pre-convert to YYYY-MM-DD, or a future pass
-// should let the column mapping also carry an explicit date format.
-function parseCsvDate(raw: string, rowNumber: number): Date {
-  const trimmed = raw.trim();
-  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
-  if (isoMatch) {
-    const d = new Date(trimmed);
-    if (!Number.isNaN(d.getTime())) return d;
+type NumericDateParts = {
+  first: number;
+  second: number;
+  year: number;
+};
+
+function getNumericDateParts(raw: string): NumericDateParts | null {
+  const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(raw.trim());
+  if (!match) return null;
+  return { first: Number(match[1]), second: Number(match[2]), year: Number(match[3]) };
+}
+
+function parseDateParts(year: number, month: number, day: number, raw: string, rowNumber: number): Date {
+  const isoDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const date = new Date(`${isoDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== isoDate) {
+    throw new CsvRowParseError(rowNumber, "date", raw);
   }
-  const d = new Date(trimmed);
-  if (!Number.isNaN(d.getTime())) return d;
+  return date;
+}
+
+function parseCsvDateWithFormat(raw: string, rowNumber: number, format: CsvDateFormat): Date {
+  const trimmed = raw.trim();
+  if (format === "ISO") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+    if (!match) throw new CsvRowParseError(rowNumber, "date", raw);
+    return parseDateParts(Number(match[1]), Number(match[2]), Number(match[3]), raw, rowNumber);
+  }
+
+  const parts = getNumericDateParts(trimmed);
+  if (!parts) throw new CsvRowParseError(rowNumber, "date", raw);
+  return format === "DMY"
+    ? parseDateParts(parts.year, parts.second, parts.first, raw, rowNumber)
+    : parseDateParts(parts.year, parts.first, parts.second, raw, rowNumber);
+}
+
+function detectDateFormat(
+  dateValues: { value: string; rowNumber: number }[]
+): { format?: CsvDateFormat; ambiguous: boolean } {
+  let detectedFormat: "DMY" | "MDY" | undefined;
+  let hasAmbiguousDate = false;
+
+  for (const { value, rowNumber } of dateValues) {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      parseCsvDateWithFormat(trimmed, rowNumber, "ISO");
+      continue;
+    }
+
+    const parts = getNumericDateParts(trimmed);
+    if (!parts) {
+      if (!trimmed || Number.isNaN(new Date(trimmed).getTime())) {
+        throw new CsvRowParseError(rowNumber, "date", value);
+      }
+      continue;
+    }
+
+    if (parts.first < 1 || parts.second < 1 || (parts.first > 12 && parts.second > 12)) {
+      throw new CsvRowParseError(rowNumber, "date", value);
+    }
+    const rowFormat =
+      parts.first > 12 ? "DMY" : parts.second > 12 ? "MDY" : undefined;
+
+    if (!rowFormat) {
+      hasAmbiguousDate = true;
+      continue;
+    }
+    if (detectedFormat && detectedFormat !== rowFormat) {
+      throw new CsvRowParseError(rowNumber, "date", value);
+    }
+    detectedFormat = rowFormat;
+    parseCsvDateWithFormat(trimmed, rowNumber, detectedFormat);
+  }
+
+  return {
+    format: detectedFormat,
+    ambiguous: !detectedFormat && hasAmbiguousDate,
+  };
+}
+
+function parseCsvDate(raw: string, rowNumber: number, detectedFormat?: CsvDateFormat): Date {
+  const trimmed = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return parseCsvDateWithFormat(trimmed, rowNumber, "ISO");
+  }
+
+  if (getNumericDateParts(trimmed)) {
+    if (!detectedFormat) throw new CsvRowParseError(rowNumber, "date", raw);
+    return parseCsvDateWithFormat(trimmed, rowNumber, detectedFormat);
+  }
+
+  const date = new Date(trimmed);
+  if (!Number.isNaN(date.getTime())) return date;
   throw new CsvRowParseError(rowNumber, "date", raw);
 }
 
@@ -377,19 +463,64 @@ export function parseBankStatementCsv(content: string, options?: { columnMapping
 
   const mappingResult = resolveMapping(headers, options?.columnMapping);
   if ("status" in mappingResult) {
-    return { ...mappingResult, sampleRows: dataRows.slice(0, 5) };
+    const preview = { ...mappingResult, sampleRows: dataRows.slice(0, 5) };
+    if (mappingResult.detected.date && dataRows.every((row) => row.length === headers.length)) {
+      const dateDetection = detectDateFormat(
+        dataRows.map((row, i) => ({
+          value: getCell(row, headers, mappingResult.detected.date!),
+          rowNumber: i + 2,
+        }))
+      );
+      if (dateDetection.ambiguous) {
+        return {
+          ...preview,
+          reason: `${preview.reason}; date format is ambiguous, choose ISO, DMY, or MDY`,
+          dateFormatRequired: true,
+        };
+      }
+    }
+    return preview;
   }
   const mapping = mappingResult;
 
   const expectedColumns = headers.length;
+  for (let i = 0; i < dataRows.length; i++) {
+    if (dataRows[i].length !== expectedColumns) {
+      throw new CsvMalformedRowError(i + 2, expectedColumns, dataRows[i].length);
+    }
+  }
+
+  const dateValues = dataRows.map((row, i) => ({
+    value: getCell(row, headers, mapping.date),
+    rowNumber: i + 2,
+  }));
+  const dateDetection = mapping.dateFormat
+    ? { format: mapping.dateFormat, ambiguous: false }
+    : detectDateFormat(dateValues);
+  if (dateDetection.ambiguous) {
+    return {
+      status: "needs_mapping",
+      reason: "date format is ambiguous; choose ISO, DMY, or MDY",
+      headers,
+      detected: {
+        date: mapping.date,
+        description: mapping.description,
+        amount: mapping.amount,
+        debit: mapping.debit,
+        credit: mapping.credit,
+        referenceNo: mapping.referenceNo,
+      },
+      sampleRows: dataRows.slice(0, 5),
+      dateFormatRequired: true,
+    };
+  }
+  const detectedDateFormat = dateDetection.format;
+
   const lines: ParsedBankStatementLine[] = [];
 
   for (let i = 0; i < dataRows.length; i++) {
     const rowNumber = i + 2; // 1-indexed, +1 for the header row
     const row = dataRows[i];
-    if (row.length !== expectedColumns) {
-      throw new CsvMalformedRowError(rowNumber, expectedColumns, row.length);
-    }
 
     const dateRaw = getCell(row, headers, mapping.date);
     const description = getCell(row, headers, mapping.description).trim();
@@ -415,7 +546,9 @@ export function parseBankStatementCsv(content: string, options?: { columnMapping
     const referenceNoRaw = mapping.referenceNo ? getCell(row, headers, mapping.referenceNo).trim() : "";
 
     lines.push({
-      date: parseCsvDate(dateRaw, rowNumber),
+      date: mapping.dateFormat
+        ? parseCsvDateWithFormat(dateRaw, rowNumber, mapping.dateFormat)
+        : parseCsvDate(dateRaw, rowNumber, detectedDateFormat),
       description,
       amount,
       referenceNo: referenceNoRaw || undefined,

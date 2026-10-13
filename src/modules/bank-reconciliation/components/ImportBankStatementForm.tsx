@@ -27,9 +27,11 @@ type PreviewLine = {
 };
 
 type AmountMode = "amount" | "debitCredit";
+type DateFormat = "ISO" | "DMY" | "MDY";
 
 type MappingState = {
   date: string;
+  dateFormat: DateFormat | "";
   description: string;
   amountMode: AmountMode;
   amount: string;
@@ -49,7 +51,12 @@ function roundCurrency(amount: number): number {
 // itself has no concept of "both" (the parser already collapsed debit/credit
 // into a single signed amount per line before this mapping is even built).
 function buildColumnMapping(mapping: MappingState): Record<string, string | undefined> {
-  const base = { date: mapping.date, description: mapping.description, referenceNo: mapping.referenceNo || undefined };
+  const base = {
+    date: mapping.date,
+    dateFormat: mapping.dateFormat || undefined,
+    description: mapping.description,
+    referenceNo: mapping.referenceNo || undefined,
+  };
   return mapping.amountMode === "amount"
     ? { ...base, amount: mapping.amount }
     : { ...base, debit: mapping.debit || undefined, credit: mapping.credit || undefined };
@@ -81,6 +88,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
   const [sampleRows, setSampleRows] = useState<string[][]>([]);
   const [mapping, setMapping] = useState<MappingState>({
     date: "",
+    dateFormat: "",
     description: "",
     amountMode: "amount",
     amount: "",
@@ -89,6 +97,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
     referenceNo: "",
   });
   const [appliedMapping, setAppliedMapping] = useState<Record<string, string | undefined> | null>(null);
+  const [dateFormatRequired, setDateFormatRequired] = useState(false);
 
   const [previewLines, setPreviewLines] = useState<PreviewLine[]>([]);
 
@@ -132,6 +141,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
         setSampleRows(json.sampleRows ?? []);
         setMapping({
           date: detected.date ?? "",
+          dateFormat: "",
           description: detected.description ?? "",
           amountMode: detected.amount ? "amount" : "debitCredit",
           amount: detected.amount ?? "",
@@ -140,6 +150,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
           referenceNo: detected.referenceNo ?? "",
         });
         setAppliedMapping(null);
+        setDateFormatRequired(json.dateFormatRequired === true);
         setStep("mapping");
         return;
       }
@@ -150,6 +161,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
       }
 
       setAppliedMapping(null);
+      setDateFormatRequired(false);
       setPreviewLines(json.data.lines);
       setStep("preview");
     });
@@ -169,6 +181,10 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
       setError("At least one of debit/credit column is required.");
       return;
     }
+    if (dateFormatRequired && !mapping.dateFormat) {
+      setError("Choose a date format to continue.");
+      return;
+    }
 
     const columnMapping = buildColumnMapping(mapping);
 
@@ -176,10 +192,14 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
       const { status, json } = await parseCsv(true, columnMapping);
 
       if (status !== 200) {
+        if (status === 422 && json.dateFormatRequired === true) {
+          setDateFormatRequired(true);
+        }
         setError(json.error ?? "Failed to parse the CSV file with this column mapping.");
         return;
       }
 
+      setDateFormatRequired(false);
       setAppliedMapping(columnMapping);
       setPreviewLines(json.data.lines);
       setStep("preview");
@@ -253,6 +273,25 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
             </div>
           </div>
 
+          <div>
+            <label className="text-sm font-medium" htmlFor="mapDateFormat">
+              Date format
+            </label>
+            <select
+              id="mapDateFormat"
+              value={mapping.dateFormat}
+              onChange={(e) =>
+                setMapping((prev) => ({ ...prev, dateFormat: e.target.value as DateFormat | "" }))
+              }
+              className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="">Auto-detect</option>
+              <option value="ISO">ISO (YYYY-MM-DD)</option>
+              <option value="DMY">DMY (DD/MM/YYYY)</option>
+              <option value="MDY">MDY (MM/DD/YYYY)</option>
+            </select>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium" htmlFor="periodStart">
@@ -320,8 +359,9 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
       {step === "mapping" && (
         <div className="space-y-4">
           <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-            The CSV&apos;s columns couldn&apos;t be auto-detected. Map each field to a column
-            below.
+            {dateFormatRequired
+              ? "Date values are ambiguous. Choose a date format below."
+              : "The CSV's columns couldn't be auto-detected. Map each field to a column below."}
           </p>
 
           <div className="grid gap-4 sm:grid-cols-2">

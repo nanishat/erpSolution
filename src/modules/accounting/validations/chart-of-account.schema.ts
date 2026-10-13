@@ -35,7 +35,10 @@ export const updateChartOfAccountSchema = z.object({
 export const listChartOfAccountsQuerySchema = z.object({
   type: z.nativeEnum(AccountType).optional(),
   subType: z.nativeEnum(AccountSubType).optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
   parentId: z.string().optional(),
 });
 
