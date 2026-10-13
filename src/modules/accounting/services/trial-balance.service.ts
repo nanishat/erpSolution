@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type { TrialBalanceQuery } from "@/modules/accounting/validations/trial-balance.schema";
+import { DEBIT_NORMAL_TYPES } from "@/modules/accounting/services/report-utils";
 
 export type TrialBalanceRow = {
   accountId: string;
@@ -20,10 +21,6 @@ export type TrialBalanceResult = {
   totalCredit: number;
   isBalanced: boolean;
 };
-
-// Normal-balance convention: ASSET/EXPENSE grow on the debit side,
-// LIABILITY/EQUITY/REVENUE grow on the credit side.
-const DEBIT_NORMAL_TYPES = new Set<AccountType>(["ASSET", "EXPENSE"]);
 
 function roundToCents(value: number): number {
   return Math.round(value * 100) / 100;
