@@ -35,13 +35,16 @@ export default async function TrialBalancePage({
       <div>
         <h1 className="text-xl font-semibold">Trial Balance</h1>
         <p className="text-sm text-muted-foreground">
-          Debit/credit totals for posted journal activity, by account.
+          Debit/credit totals for journal activity in the selected date range, by account.
         </p>
       </div>
 
       <TrialBalanceFilters branches={branches} defaultValues={params} />
 
-      <TrialBalanceTable report={report} />
+      <TrialBalanceTable
+        report={report}
+        filters={{ from: params.from, to: params.to, branchId: params.branchId }}
+      />
     </div>
   );
 }

@@ -1,6 +1,23 @@
+"use client";
+
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import type { TrialBalanceResult } from "@/modules/accounting/services/trial-balance.service";
 
-export function TrialBalanceTable({ report }: { report: TrialBalanceResult }) {
+type TrialBalanceView = "flat" | "grouped";
+
+export function TrialBalanceTable({
+  report,
+  filters,
+}: {
+  report: TrialBalanceResult;
+  filters: { from?: string; to?: string; branchId?: string };
+}) {
+  const [view, setView] = useState<TrialBalanceView>("flat");
+
   if (report.rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -9,8 +26,64 @@ export function TrialBalanceTable({ report }: { report: TrialBalanceResult }) {
     );
   }
 
+  const accountHref = (accountId: string) => {
+    const params = new URLSearchParams({ accountId });
+    if (filters.from) params.set("from", filters.from);
+    if (filters.to) params.set("to", filters.to);
+    if (filters.branchId) params.set("branchId", filters.branchId);
+    return `/accounting/reports/general-ledger?${params.toString()}`;
+  };
+
+  const renderRow = (
+    row: TrialBalanceResult["rows"][number],
+    options: { header?: boolean; indented?: boolean } = {}
+  ) => (
+    <tr
+      key={row.accountId}
+      className={`border-t border-border${options.header ? " bg-muted/50 font-semibold" : ""}`}
+    >
+      <td className={`px-3 py-2 font-mono text-xs${options.indented ? " pl-8" : ""}`}>
+        <Link href={accountHref(row.accountId)} className="hover:underline">
+          {row.code}
+        </Link>
+      </td>
+      <td className="px-3 py-2">
+        <Link href={accountHref(row.accountId)} className="hover:underline">
+          {row.name}
+        </Link>
+      </td>
+      <td className="px-3 py-2 text-muted-foreground">{row.type}</td>
+      <td className="px-3 py-2 text-right">{row.totalDebit.toFixed(2)}</td>
+      <td className="px-3 py-2 text-right">{row.totalCredit.toFixed(2)}</td>
+    </tr>
+  );
+  const renderGroup = (
+    group: TrialBalanceResult["groups"][number],
+    indented = false
+  ): ReactNode[] => [
+    renderRow(group.row, { header: group.children.length > 0, indented }),
+    ...group.children.flatMap((child) => renderGroup(child, true)),
+  ];
+
   return (
     <div className="space-y-2">
+      <div className="flex gap-2" aria-label="Trial balance view">
+        <Button
+          aria-pressed={view === "flat"}
+          onClick={() => setView("flat")}
+          variant={view === "flat" ? "default" : "outline"}
+        >
+          Flat
+        </Button>
+        <Button
+          aria-pressed={view === "grouped"}
+          onClick={() => setView("grouped")}
+          variant={view === "grouped" ? "default" : "outline"}
+        >
+          Grouped by head
+        </Button>
+      </div>
+
       {!report.isBalanced && (
         <div className="rounded-md border border-destructive bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
           Trial balance is out of balance — total debits ({report.totalDebit.toFixed(2)}) do
@@ -31,15 +104,9 @@ export function TrialBalanceTable({ report }: { report: TrialBalanceResult }) {
             </tr>
           </thead>
           <tbody>
-            {report.rows.map((row) => (
-              <tr key={row.accountId} className="border-t border-border">
-                <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
-                <td className="px-3 py-2">{row.name}</td>
-                <td className="px-3 py-2 text-muted-foreground">{row.type}</td>
-                <td className="px-3 py-2 text-right">{row.totalDebit.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">{row.totalCredit.toFixed(2)}</td>
-              </tr>
-            ))}
+            {view === "flat"
+              ? report.rows.map((row) => renderRow(row))
+              : report.groups.flatMap((group) => renderGroup(group))}
           </tbody>
           <tfoot>
             <tr
