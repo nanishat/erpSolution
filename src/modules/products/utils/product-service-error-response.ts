@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { NonPostableAccountJournalLineError } from "@/modules/accounting/services/account-postability.service";
 import {
   DuplicateProductServiceCodeError,
   ExpenseAccountNotFoundError,
@@ -16,7 +17,8 @@ export function productServiceErrorResponse(error: unknown): NextResponse {
   }
   if (
     error instanceof IncomeAccountNotFoundError ||
-    error instanceof ExpenseAccountNotFoundError
+    error instanceof ExpenseAccountNotFoundError ||
+    error instanceof NonPostableAccountJournalLineError
   ) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

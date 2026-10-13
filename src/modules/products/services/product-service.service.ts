@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { assertAccountPostable } from "@/modules/accounting/services/account-postability.service";
 import type {
   CreateProductServiceInput,
   ListProductServicesQuery,
@@ -121,6 +122,10 @@ export async function createProductService(
     if (input.expenseAccountId) {
       await assertActiveAccountExists(tx, input.expenseAccountId, ExpenseAccountNotFoundError);
     }
+    await assertAccountPostable(tx, [
+      input.incomeAccountId,
+      ...(input.expenseAccountId ? [input.expenseAccountId] : []),
+    ]);
 
     try {
       const created = await tx.productService.create({
@@ -171,6 +176,13 @@ export async function updateProductService(
     if (input.expenseAccountId) {
       await assertActiveAccountExists(tx, input.expenseAccountId, ExpenseAccountNotFoundError);
     }
+    const incomeAccountId = input.incomeAccountId ?? existing.incomeAccountId;
+    const expenseAccountId =
+      input.expenseAccountId === undefined ? existing.expenseAccountId : input.expenseAccountId;
+    await assertAccountPostable(tx, [
+      incomeAccountId,
+      ...(expenseAccountId ? [expenseAccountId] : []),
+    ]);
 
     try {
       const updated = await tx.productService.update({

@@ -150,6 +150,49 @@ async function assertNoCycle(
   }
 }
 
+async function assertParentCanAcceptChild(
+  tx: Prisma.TransactionClient,
+  parentId: string,
+  childType: CreateChartOfAccountInput["type"],
+  isAddingChild = true
+): Promise<boolean> {
+  const parent = await tx.chartOfAccount.findUnique({
+    where: { id: parentId },
+    select: {
+      type: true,
+      isPostable: true,
+      journalLines: { take: 1, select: { id: true } },
+    },
+  });
+  if (!parent) {
+    throw new InvalidChartOfAccountHierarchyError(`Parent account ${parentId} does not exist`);
+  }
+  if (parent.type !== childType) {
+    throw new InvalidChartOfAccountHierarchyError(
+      `Child account type (${childType}) must match parent account type (${parent.type})`
+    );
+  }
+  if (isAddingChild && parent.isPostable && parent.journalLines.length > 0) {
+    throw new InvalidChartOfAccountHierarchyError(
+      "Cannot add a sub-account to a postable account that has journal lines"
+    );
+  }
+  return isAddingChild && parent.isPostable;
+}
+
+async function makeParentNonPostable(
+  tx: Prisma.TransactionClient,
+  parentId: string,
+  wasPostable: boolean
+): Promise<void> {
+  if (wasPostable) {
+    await tx.chartOfAccount.update({
+      where: { id: parentId },
+      data: { isPostable: false },
+    });
+  }
+}
+
 export async function createChartOfAccount(
   input: CreateChartOfAccountInput
 ): Promise<ChartOfAccountWithChildren> {
@@ -159,21 +202,9 @@ export async function createChartOfAccount(
       throw new DuplicateChartOfAccountCodeError(input.code);
     }
 
+    let parentWasPostable = false;
     if (input.parentId) {
-      const parent = await tx.chartOfAccount.findUnique({
-        where: { id: input.parentId },
-        select: { type: true },
-      });
-      if (!parent) {
-        throw new InvalidChartOfAccountHierarchyError(
-          `Parent account ${input.parentId} does not exist`
-        );
-      }
-      if (parent.type !== input.type) {
-        throw new InvalidChartOfAccountHierarchyError(
-          `Child account type (${input.type}) must match parent account type (${parent.type})`
-        );
-      }
+      parentWasPostable = await assertParentCanAcceptChild(tx, input.parentId, input.type);
     }
 
     try {
@@ -195,6 +226,9 @@ export async function createChartOfAccount(
         },
         include: chartOfAccountWithChildrenInclude,
       });
+      if (input.parentId) {
+        await makeParentNonPostable(tx, input.parentId, parentWasPostable);
+      }
       return serializeChartOfAccount(created);
     } catch (error) {
       if (
@@ -215,7 +249,7 @@ export async function updateChartOfAccount(
   return db.$transaction(async (tx) => {
     const existing = await tx.chartOfAccount.findUnique({
       where: { id },
-      include: { journalLines: { take: 1 } },
+      include: { journalLines: { take: 1 }, children: { take: 1 } },
     });
     if (!existing) {
       throw new ChartOfAccountNotFoundError(id);
@@ -239,7 +273,24 @@ export async function updateChartOfAccount(
       }
     }
 
+    if (input.isPostable === true && existing.children.length > 0) {
+      throw new InvalidChartOfAccountHierarchyError(
+        "An account with sub-accounts cannot be postable"
+      );
+    }
+    if (
+      input.isPostable === false &&
+      existing.isPostable &&
+      existing.children.length === 0 &&
+      existing.journalLines.length > 0
+    ) {
+      throw new ChartOfAccountDeletionNotAllowedError(
+        "An account with journal lines cannot be made non-postable"
+      );
+    }
+
     const nextType = input.type ?? existing.type;
+    let parentWasPostable = false;
 
     if (input.parentId) {
       const existingChild = await tx.chartOfAccount.findFirst({ where: { parentId: id } });
@@ -249,20 +300,12 @@ export async function updateChartOfAccount(
         );
       }
       await assertNoCycle(tx, id, input.parentId);
-      const parent = await tx.chartOfAccount.findUnique({
-        where: { id: input.parentId },
-        select: { type: true },
-      });
-      if (!parent) {
-        throw new InvalidChartOfAccountHierarchyError(
-          `Parent account ${input.parentId} does not exist`
-        );
-      }
-      if (parent.type !== nextType) {
-        throw new InvalidChartOfAccountHierarchyError(
-          `Child account type (${nextType}) must match parent account type (${parent.type})`
-        );
-      }
+      parentWasPostable = await assertParentCanAcceptChild(
+        tx,
+        input.parentId,
+        nextType,
+        input.parentId !== existing.parentId
+      );
     }
 
     try {
@@ -284,6 +327,9 @@ export async function updateChartOfAccount(
         },
         include: chartOfAccountWithChildrenInclude,
       });
+      if (input.parentId && input.parentId !== existing.parentId) {
+        await makeParentNonPostable(tx, input.parentId, parentWasPostable);
+      }
       return serializeChartOfAccount(updated);
     } catch (error) {
       if (
