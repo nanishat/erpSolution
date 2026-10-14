@@ -32,6 +32,7 @@ const navItems: NavEntry[] = [
       { label: "Trial Balance", href: "/accounting/reports/trial-balance" },
       { label: "Profit & Loss", href: "/accounting/reports/profit-loss" },
       { label: "Balance Sheet", href: "/accounting/reports/balance-sheet" },
+      { label: "Cash Flow", href: "/accounting/reports/cash-flow" },
       { label: "General Ledger", href: "/accounting/reports/general-ledger" },
       { label: "Customer Invoices", href: "/accounting/invoices" },
       { label: "Vendor Bills", href: "/accounting/vendor-bills" },
