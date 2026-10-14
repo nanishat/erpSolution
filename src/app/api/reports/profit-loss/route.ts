@@ -2,11 +2,11 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getProfitAndLoss, ProfitAndLossBranchNotFoundError } from "@/modules/accounting/services/profit-and-loss.service";
-import { reportFiltersSchema } from "@/modules/accounting/services/report-utils";
+import { profitAndLossQuerySchema } from "@/modules/accounting/services/report-utils";
 
 export async function GET(request: NextRequest) {
   const query = Object.fromEntries(request.nextUrl.searchParams);
-  const parsed = reportFiltersSchema.safeParse(query);
+  const parsed = profitAndLossQuerySchema.safeParse(query);
 
   if (!parsed.success) {
     return NextResponse.json(

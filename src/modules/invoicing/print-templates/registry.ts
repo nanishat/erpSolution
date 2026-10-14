@@ -4,7 +4,7 @@ import type { InvoicePrintTemplate } from "@/modules/invoicing/print-templates/t
 export type { InvoicePrintTemplate, InvoicePrintTemplateProps } from "@/modules/invoicing/print-templates/types";
 
 // Keyed by Invoice.sector (e.g. "GS" -> Guard Service, "CC" -> Cash
-// Carrying) so each sector can eventually get its own layout — a per-guard
+// Carrying, "EQ" -> Equipment, "MS" -> Miscellaneous) so each sector can eventually get its own layout — a per-guard
 // breakdown for Guard Service, a run-sheet-style layout for Cash Carrying,
 // etc. — per the business requirement for a flexible, extensible
 // multi-template system rather than one fixed layout. Only the fallback

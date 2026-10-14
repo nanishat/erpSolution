@@ -15,6 +15,7 @@ import {
   JournalEntryMustPostViaInvoiceError,
   JournalEntryNotFoundError,
   JournalEntryNotPostedError,
+  JournalEntrySectorOnlyForCreditVoucherError,
   JournalEntryVoidError,
   UnbalancedJournalEntryError,
 } from "@/modules/accounting/services/journal-entry.service";
@@ -49,6 +50,7 @@ export function journalEntryErrorResponse(error: unknown): NextResponse {
     error instanceof BranchNotFoundError ||
     error instanceof CashBankAccountNotFoundError ||
     error instanceof BankDetailsRequiredError ||
+    error instanceof JournalEntrySectorOnlyForCreditVoucherError ||
     error instanceof TaxAccountNotConfiguredError ||
     error instanceof TaxSettlementLineNotFoundError ||
     error instanceof TaxSettlementLineAmbiguousError ||

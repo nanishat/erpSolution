@@ -6,9 +6,10 @@ import { getBranches } from "@/modules/core/services/branch.service";
 import {
   getProfitAndLoss,
   ProfitAndLossBranchNotFoundError,
+  UNASSIGNED_SECTOR,
   type ProfitAndLossGroup,
 } from "@/modules/accounting/services/profit-and-loss.service";
-import { reportFiltersSchema } from "@/modules/accounting/services/report-utils";
+import { profitAndLossQuerySchema } from "@/modules/accounting/services/report-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ type ProfitAndLossSearchParams = {
   from?: string;
   to?: string;
   branchId?: string;
+  bySector?: string | string[];
 };
 
 export default async function ProfitAndLossPage({
@@ -24,7 +26,7 @@ export default async function ProfitAndLossPage({
   searchParams: Promise<ProfitAndLossSearchParams>;
 }) {
   const params = await searchParams;
-  const parsed = reportFiltersSchema.safeParse(params);
+  const parsed = profitAndLossQuerySchema.safeParse(params);
   const [branches, reportResult] = await Promise.all([
     getBranches(),
     parsed.success
@@ -40,6 +42,10 @@ export default async function ProfitAndLossPage({
       : Promise.resolve({ report: null, error: null }),
   ]);
   const report = reportResult.report;
+  const bySector = parsed.success && parsed.data.bySector;
+  const sectorColumns = bySector
+    ? [...(report?.sectors ?? []).filter((sector) => sector !== UNASSIGNED_SECTOR), UNASSIGNED_SECTOR]
+    : [];
 
   const accountHref = (accountId: string) => {
     const query = new URLSearchParams({ accountId });
@@ -52,7 +58,8 @@ export default async function ProfitAndLossPage({
   const renderTree = (
     group: ProfitAndLossGroup,
     depth = 0,
-    keyPrefix = ""
+    keyPrefix = "",
+    sectors: string[] = []
   ): ReactNode[] => [
     <tr
       key={`${keyPrefix}${group.row.accountId}`}
@@ -68,17 +75,28 @@ export default async function ProfitAndLossPage({
           {group.row.name}
         </Link>
       </td>
+      {sectors.map((sector) => (
+        <td key={sector} className="px-3 py-2 text-right">
+          {(group.row.sectorAmounts?.[sector] ?? 0).toFixed(2)}
+        </td>
+      ))}
       <td className="px-3 py-2 text-right">{group.row.amount.toFixed(2)}</td>
     </tr>,
     ...group.children.flatMap((child) =>
-      renderTree(child, depth + 1, `${keyPrefix}${group.row.accountId}/`)
+      renderTree(
+        child,
+        depth + 1,
+        `${keyPrefix}${group.row.accountId}/`,
+        sectors
+      )
     ),
   ];
 
   const renderSection = (
     title: string,
     groups: ProfitAndLossGroup[],
-    total: number
+    total: number,
+    sectorAmounts?: Record<string, number>
   ) => (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -91,15 +109,29 @@ export default async function ProfitAndLossPage({
               <tr>
                 <th className="px-3 py-2">Code</th>
                 <th className="px-3 py-2">Account</th>
-                <th className="px-3 py-2 text-right">Amount</th>
+                {sectorColumns.map((sector) => (
+                  <th key={sector} className="px-3 py-2 text-right">
+                    {sector === UNASSIGNED_SECTOR ? "Unassigned" : sector}
+                  </th>
+                ))}
+                <th className="px-3 py-2 text-right">
+                  {bySector ? "Total" : "Amount"}
+                </th>
               </tr>
             </thead>
-            <tbody>{groups.flatMap((group) => renderTree(group))}</tbody>
+            <tbody>
+              {groups.flatMap((group) => renderTree(group, 0, "", sectorColumns))}
+            </tbody>
             <tfoot>
               <tr className="border-t-2 border-border font-semibold">
                 <td className="px-3 py-2" colSpan={2}>
                   Total {title}
                 </td>
+                {sectorColumns.map((sector) => (
+                  <td key={sector} className="px-3 py-2 text-right">
+                    {(sectorAmounts?.[sector] ?? 0).toFixed(2)}
+                  </td>
+                ))}
                 <td className="px-3 py-2 text-right">{total.toFixed(2)}</td>
               </tr>
             </tfoot>
@@ -165,6 +197,16 @@ export default async function ProfitAndLossPage({
             ))}
           </select>
         </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="bySector"
+            value="true"
+            defaultChecked={bySector}
+            className="size-4 rounded border-input"
+          />
+          Break down by sector
+        </label>
         <Button type="submit">Apply</Button>
       </form>
 
@@ -177,9 +219,32 @@ export default async function ProfitAndLossPage({
         <p className="text-sm text-destructive">{reportResult.error}</p>
       )}
       {report &&
-        renderSection("Revenue", report.revenue.groups, report.totalRevenue)}
+        renderSection(
+          "Revenue",
+          report.revenue.groups,
+          report.totalRevenue,
+          report.revenue.sectorAmounts
+        )}
       {report &&
-        renderSection("Expenses", report.expenses.groups, report.totalExpense)}
+        renderSection(
+          "Expenses",
+          report.expenses.groups,
+          report.totalExpense,
+          report.expenses.sectorAmounts
+        )}
+      {bySector && report && (
+        <p
+          className={
+            report.sectorTotalsReconcile
+              ? "text-sm text-muted-foreground"
+              : "text-sm text-destructive"
+          }
+        >
+          {report.sectorTotalsReconcile
+            ? "Sector totals reconcile."
+            : "Sector totals do not reconcile."}
+        </p>
+      )}
       {report && (
         <div className="flex justify-between border-t-2 border-border pt-3 text-lg font-semibold">
           <span>{report.netProfit < 0 ? "Net Loss" : "Net Profit"}</span>

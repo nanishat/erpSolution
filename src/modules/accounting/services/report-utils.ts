@@ -29,6 +29,13 @@ export const reportFiltersSchema = z
     path: ["from"],
   });
 
+export const profitAndLossQuerySchema = reportFiltersSchema.extend({
+  bySector: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .default(false),
+});
+
 export const balanceSheetQuerySchema = z.object({
   asOf: z.iso.date().optional(),
 });

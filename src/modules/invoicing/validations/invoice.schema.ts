@@ -2,7 +2,7 @@ import { InvoiceDirection, InvoiceStatus } from "@prisma/client";
 import { z } from "zod";
 
 // Free text, same precedent as TaxRate.category — the full sector list isn't
-// known yet (only "GS"/"CC" mentioned as examples so far), so this is
+// known yet (including the confirmed "GS", "CC", "EQ", and "MS" sectors), so this is
 // intentionally not an enum. Loosely validated (trimmed, length-capped,
 // uppercased for consistency in generated invoice numbers) rather than
 // format-restricted. Only meaningful for direction: CUSTOMER — see below.

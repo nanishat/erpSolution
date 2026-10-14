@@ -1,6 +1,8 @@
 import { VoucherType } from "@prisma/client";
 import { z } from "zod";
 
+import { CREDIT_VOUCHER_SECTOR_CODES } from "@/modules/accounting/constants/sector";
+
 export const journalLineSchema = z.object({
   accountId: z.string().min(1, "Account is required"),
   branchId: z.string().min(1, "Branch is required"),
@@ -51,20 +53,35 @@ export const journalEntrySchema = z
     reference: z.string().optional(),
     branchId: z.string().min(1, "Branch is required"),
     voucherType: z.nativeEnum(VoucherType),
+    sector: z.enum(CREDIT_VOUCHER_SECTOR_CODES).nullable().optional(),
     lines: z
       .array(journalLineSchema)
       .min(2, "A journal entry needs at least two line items"),
   })
-  .superRefine(validateBalancedLines);
+  .superRefine((entry, ctx) => {
+    validateBalancedLines(entry, ctx);
+    if (
+      entry.voucherType !== VoucherType.CREDIT_VOUCHER &&
+      entry.sector !== undefined &&
+      entry.sector !== null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Sector can only be set on a Credit Voucher",
+        path: ["sector"],
+      });
+    }
+  });
 
 // voucherType/branchId/documentNumber are fixed at creation (the document
 // number is stamped from voucherType) so editing a DRAFT entry can't change
-// them — only date/description/reference/lines are mutable.
+// them — only date/description/reference/sector/lines are mutable.
 export const updateJournalEntrySchema = z
   .object({
     date: z.coerce.date(),
     description: z.string().min(1, "Description is required"),
     reference: z.string().optional(),
+    sector: z.enum(CREDIT_VOUCHER_SECTOR_CODES).nullable().optional(),
     lines: z
       .array(journalLineSchema)
       .min(2, "A journal entry needs at least two line items"),

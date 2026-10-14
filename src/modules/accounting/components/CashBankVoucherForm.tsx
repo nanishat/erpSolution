@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import type { VoucherType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import {
+  CREDIT_VOUCHER_SECTOR_CODES,
+  CREDIT_VOUCHER_SECTOR_LABELS,
+  type CreditVoucherSector,
+} from "@/modules/accounting/constants/sector";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
 import type { BranchOption } from "@/modules/core/services/branch.service";
@@ -46,6 +51,7 @@ export function CashBankVoucherForm({
     cashBankAccounts.length === 1 ? cashBankAccounts[0].id : ""
   );
   const [otherAccountId, setOtherAccountId] = useState("");
+  const [sector, setSector] = useState<CreditVoucherSector | "">("");
   const [amount, setAmount] = useState("");
   const [chosenDirection, setChosenDirection] = useState<Direction>("in");
 
@@ -100,6 +106,7 @@ export function CashBankVoucherForm({
       reference: undefined,
       branchId,
       voucherType,
+      ...(voucherType === "CREDIT_VOUCHER" ? { sector: sector || null } : {}),
       lines: [cashBankLine, otherLine],
     };
 
@@ -260,6 +267,31 @@ export function CashBankVoucherForm({
           className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
         />
       </div>
+
+      {voucherType === "CREDIT_VOUCHER" && (
+        <div>
+          <label className="text-sm font-medium" htmlFor="sector">
+            Sector
+          </label>
+          <select
+            id="sector"
+            value={sector}
+            onChange={(event) =>
+              setSector(
+                CREDIT_VOUCHER_SECTOR_CODES.find((code) => code === event.target.value) ?? ""
+              )
+            }
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          >
+            <option value="">No sector</option>
+            {CREDIT_VOUCHER_SECTOR_CODES.map((code) => (
+              <option key={code} value={code}>
+                {code} — {CREDIT_VOUCHER_SECTOR_LABELS[code]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {formError && <p className="text-sm text-destructive">{formError}</p>}
 

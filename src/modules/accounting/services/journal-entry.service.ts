@@ -127,6 +127,13 @@ export class JournalEntryMustEditViaInvoiceError extends Error {
   }
 }
 
+export class JournalEntrySectorOnlyForCreditVoucherError extends Error {
+  constructor() {
+    super("Sector can only be set on a Credit Voucher");
+    this.name = "JournalEntrySectorOnlyForCreditVoucherError";
+  }
+}
+
 export const journalEntryInclude = {
   branch: { select: { id: true, name: true, code: true } },
   lines: { include: { account: true, branch: { select: { id: true, name: true, code: true } } } },
@@ -241,6 +248,7 @@ async function createJournalEntryWithClient(
       date: input.date,
       description: input.description,
       reference: input.reference,
+      sector: input.voucherType === "CREDIT_VOUCHER" ? input.sector ?? null : null,
       branchId: input.branchId,
       voucherType: input.voucherType,
       documentNumber,
@@ -323,6 +331,9 @@ export async function updateJournalEntry(
         existing.invoice.invoiceNumber
       );
     }
+    if (existing.voucherType !== "CREDIT_VOUCHER" && input.sector != null) {
+      throw new JournalEntrySectorOnlyForCreditVoucherError();
+    }
 
     await assertAccountPostable(
       tx,
@@ -337,6 +348,9 @@ export async function updateJournalEntry(
         date: input.date,
         description: input.description,
         reference: input.reference,
+        ...(existing.voucherType === "CREDIT_VOUCHER"
+          ? { sector: input.sector === undefined ? existing.sector : input.sector }
+          : {}),
         lines: {
           create: input.lines.map((line) => ({
             accountId: line.accountId,

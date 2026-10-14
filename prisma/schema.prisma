@@ -46,6 +46,7 @@ model JournalEntry {
   date           DateTime
   description    String
   reference      String?
+  sector         String?
   status         JournalEntryStatus @default(DRAFT)
   voucherType    VoucherType
   documentNumber String             @unique

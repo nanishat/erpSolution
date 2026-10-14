@@ -174,7 +174,7 @@ export function InvoiceForm({
             <input
               id="sector"
               type="text"
-              placeholder="e.g. GS, CC"
+              placeholder="e.g. GS, CC, EQ, MS"
               value={sector}
               onChange={(e) => setSector(e.target.value)}
               className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"

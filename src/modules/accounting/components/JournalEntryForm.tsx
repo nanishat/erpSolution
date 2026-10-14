@@ -9,6 +9,11 @@ import type { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { createJournalEntryAction } from "@/modules/accounting/actions/journal-entry.actions";
 import {
+  CREDIT_VOUCHER_SECTOR_CODES,
+  CREDIT_VOUCHER_SECTOR_LABELS,
+  type CreditVoucherSector,
+} from "@/modules/accounting/constants/sector";
+import {
   USER_CREATABLE_VOUCHER_TYPES,
   VOUCHER_TYPE_LABELS,
 } from "@/modules/accounting/constants/voucher-type";
@@ -73,6 +78,8 @@ export function JournalEntryForm({
           reference: entry.reference ?? "",
           branchId: entry.branchId,
           voucherType: entry.voucherType,
+          sector:
+            CREDIT_VOUCHER_SECTOR_CODES.find((code) => code === entry.sector) ?? null,
           lines: entry.lines.map((line) => ({
             accountId: line.accountId,
             branchId: line.branchId,
@@ -87,12 +94,15 @@ export function JournalEntryForm({
           reference: "",
           branchId: "",
           voucherType: undefined,
+          sector: null,
           lines: [emptyLine(""), emptyLine("")],
         },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
   const entryBranchId = useWatch({ control, name: "branchId" });
+  const voucherType = useWatch({ control, name: "voucherType" });
+  const sector = useWatch({ control, name: "sector" });
 
   // Newly selecting the entry's branch defaults any not-yet-assigned line
   // branches to it, while leaving lines the user already set alone (a single
@@ -248,6 +258,36 @@ export function JournalEntryForm({
           <p className="mt-1 text-xs text-destructive">{errors.description.message}</p>
         )}
       </div>
+
+      {voucherType === "CREDIT_VOUCHER" && (
+        <div>
+          <label className="text-sm font-medium" htmlFor="sector">
+            Sector
+          </label>
+          <select
+            id="sector"
+            value={sector ?? ""}
+            onChange={(event) =>
+              setValue(
+                "sector",
+                CREDIT_VOUCHER_SECTOR_CODES.find((code) => code === event.target.value) ?? null,
+                { shouldValidate: true }
+              )
+            }
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          >
+            <option value="">No sector</option>
+            {CREDIT_VOUCHER_SECTOR_CODES.map((code) => (
+              <option key={code} value={code}>
+                {code} — {CREDIT_VOUCHER_SECTOR_LABELS[code]}
+              </option>
+            ))}
+          </select>
+          {errors.sector && (
+            <p className="mt-1 text-xs text-destructive">{errors.sector.message}</p>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
