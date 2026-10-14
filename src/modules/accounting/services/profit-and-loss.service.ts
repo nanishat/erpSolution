@@ -124,6 +124,12 @@ export async function getProfitAndLoss(
           select: {
             sector: true,
             invoice: { select: { sector: true } },
+            reversalOfEntry: {
+              select: {
+                sector: true,
+                invoice: { select: { sector: true } },
+              },
+            },
           },
         },
       },
@@ -133,6 +139,8 @@ export async function getProfitAndLoss(
       const sector =
         line.journalEntry.sector ??
         line.journalEntry.invoice?.sector ??
+        line.journalEntry.reversalOfEntry?.sector ??
+        line.journalEntry.reversalOfEntry?.invoice?.sector ??
         UNASSIGNED_SECTOR;
       sectorSet.add(sector);
 
