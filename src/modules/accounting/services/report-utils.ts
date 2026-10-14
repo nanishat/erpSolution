@@ -29,6 +29,16 @@ export const reportFiltersSchema = z
     path: ["from"],
   });
 
+export const balanceSheetQuerySchema = z.object({
+  asOf: z.iso.date().optional(),
+});
+
+export function reportDateExclusiveEnd(date: string): Date {
+  const exclusiveEnd = new Date(`${date}T00:00:00.000Z`);
+  exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+  return exclusiveEnd;
+}
+
 export const generalLedgerQuerySchema = reportFiltersSchema.and(
   z.object({
     accountId: z.string().min(1).optional(),
@@ -36,6 +46,7 @@ export const generalLedgerQuerySchema = reportFiltersSchema.and(
 );
 
 export type GeneralLedgerQuery = z.infer<typeof generalLedgerQuerySchema>;
+export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>;
 
 // Reversed originals remain reportable (with status VOID) so they pair with
 // their POSTED reversal; unrelated VOID entries never affected the ledger.
