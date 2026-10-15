@@ -42,6 +42,16 @@ export class PartnerTdsExemptError extends Error {
   }
 }
 
+export class InvoiceWithholdingTaxError extends Error {
+  constructor() {
+    super(
+      "TDS and VDS can't be applied to invoices or vendor bills. " +
+        "Record withholding on a Debit Voucher."
+    );
+    this.name = "InvoiceWithholdingTaxError";
+  }
+}
+
 export class JournalEntryNotDraftError extends Error {
   constructor(id: string, status: string) {
     super(
@@ -100,10 +110,13 @@ export async function createTaxApplication(
   return db.$transaction(async (tx) => {
     const journalEntry = await tx.journalEntry.findUnique({
       where: { id: input.journalEntryId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, invoice: { select: { id: true } } },
     });
     if (!journalEntry) {
       throw new JournalEntryNotFoundError(input.journalEntryId);
+    }
+    if (journalEntry.invoice && (input.taxType === "TDS" || input.taxType === "VDS")) {
+      throw new InvoiceWithholdingTaxError();
     }
     // The UI only offers "Add Tax" on DRAFT entries, but the service must
     // enforce it too — a TaxApplication attached to a POSTED/VOID entry

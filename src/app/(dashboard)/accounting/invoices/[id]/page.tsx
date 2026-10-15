@@ -157,6 +157,7 @@ export default async function CustomerInvoiceDetailPage({
           journalEntryId={invoice.journalEntryId}
           partners={partners}
           vatRates={vatRates}
+          invoiceLinked
         />
       )}
 

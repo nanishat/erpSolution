@@ -4,6 +4,7 @@ import { JournalEntryNotFoundError } from "@/modules/accounting/services/journal
 import { PartnerNotFoundError } from "@/modules/partners/services/partner.service";
 import {
   JournalEntryNotDraftError,
+  InvoiceWithholdingTaxError,
   PartnerTdsExemptError,
   TaxApplicationNotFoundError,
   TaxRateDirectionMismatchError,
@@ -27,7 +28,13 @@ export function taxApplicationErrorResponse(error: unknown): NextResponse {
   ) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
-  if (error instanceof PartnerTdsExemptError || error instanceof JournalEntryNotDraftError) {
+  if (error instanceof InvoiceWithholdingTaxError) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (
+    error instanceof PartnerTdsExemptError ||
+    error instanceof JournalEntryNotDraftError
+  ) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }
   if (

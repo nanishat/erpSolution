@@ -152,6 +152,7 @@ export default async function VendorBillDetailPage({
           journalEntryId={invoice.journalEntryId}
           partners={partners}
           vatRates={vatRates}
+          invoiceLinked
         />
       )}
 

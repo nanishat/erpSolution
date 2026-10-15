@@ -42,10 +42,12 @@ export function AddTaxApplicationForm({
   journalEntryId,
   partners,
   vatRates,
+  invoiceLinked = false,
 }: {
   journalEntryId: string;
   partners: Partner[];
   vatRates: TaxRate[];
+  invoiceLinked?: boolean;
 }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -157,11 +159,13 @@ export function AddTaxApplicationForm({
             <option value="" disabled>
               Select tax type
             </option>
-            {Object.values(TaxType).map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
+            {Object.values(TaxType)
+              .filter((type) => !invoiceLinked || type === TaxType.VAT)
+              .map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
           </select>
           {errors.taxType && (
             <p className="mt-1 text-xs text-destructive">{errors.taxType.message}</p>
