@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ReportExportLinks } from "@/modules/accounting/components/ReportExportLinks";
 import {
   getBalanceSheet,
   type BalanceSheetGroup,
@@ -137,6 +138,11 @@ export default async function BalanceSheetPage({
         </div>
         <Button type="submit">Apply</Button>
       </form>
+
+      <ReportExportLinks
+        path="/api/reports/balance-sheet"
+        filters={{ asOf: params.asOf ?? report?.asOf }}
+      />
 
       {!parsed.success && (
         <p className="text-sm text-destructive">

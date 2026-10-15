@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { ReportExportLinks } from "@/modules/accounting/components/ReportExportLinks";
 import {
   getCashFlow,
   type CashFlowCategory,
@@ -128,6 +129,11 @@ export default async function CashFlowPage({
         </div>
         <Button type="submit">Apply</Button>
       </form>
+
+      <ReportExportLinks
+        path="/api/reports/cash-flow"
+        filters={{ from: params.from, to: params.to }}
+      />
 
       {!parsed.success && (
         <p className="text-sm text-destructive">

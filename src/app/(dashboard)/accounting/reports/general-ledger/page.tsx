@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { GeneralLedgerFilters } from "@/modules/accounting/components/GeneralLedgerFilters";
 import { GeneralLedgerTable } from "@/modules/accounting/components/GeneralLedgerTable";
+import { ReportExportLinks } from "@/modules/accounting/components/ReportExportLinks";
 import {
   getGeneralLedger,
   getGeneralLedgerAccountOptions,
@@ -51,6 +52,15 @@ export default async function GeneralLedgerPage({
       </div>
 
       <GeneralLedgerFilters accounts={accounts} branches={branches} defaultValues={params} />
+      <ReportExportLinks
+        path="/api/reports/general-ledger"
+        filters={{
+          accountId: params.accountId,
+          from: params.from,
+          to: params.to,
+          branchId: params.branchId,
+        }}
+      />
       {!parsed.success && (
         <p className="text-sm text-destructive">
           {parsed.error.issues[0]?.message ?? "Invalid report filters."}

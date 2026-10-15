@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ReportExportLinks } from "@/modules/accounting/components/ReportExportLinks";
 import { getBranches } from "@/modules/core/services/branch.service";
 import {
   getProfitAndLoss,
@@ -209,6 +210,16 @@ export default async function ProfitAndLossPage({
         </label>
         <Button type="submit">Apply</Button>
       </form>
+
+      <ReportExportLinks
+        path="/api/reports/profit-loss"
+        filters={{
+          from: params.from,
+          to: params.to,
+          branchId: params.branchId,
+          bySector: bySector ? "true" : undefined,
+        }}
+      />
 
       {!parsed.success && (
         <p className="text-sm text-destructive">

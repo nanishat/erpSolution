@@ -2,6 +2,7 @@ import { getTrialBalance } from "@/modules/accounting/services/trial-balance.ser
 import { getBranches } from "@/modules/core/services/branch.service";
 import { TrialBalanceFilters } from "@/modules/accounting/components/TrialBalanceFilters";
 import { TrialBalanceTable } from "@/modules/accounting/components/TrialBalanceTable";
+import { ReportExportLinks } from "@/modules/accounting/components/ReportExportLinks";
 
 // Trial balance reflects posted activity as of now — never statically prerendered/cached.
 export const dynamic = "force-dynamic";
@@ -40,6 +41,16 @@ export default async function TrialBalancePage({
       </div>
 
       <TrialBalanceFilters branches={branches} defaultValues={params} />
+      <ReportExportLinks
+        path="/api/reports/trial-balance"
+        filters={{
+          from: params.from,
+          to: params.to,
+          branchId: params.branchId,
+          includeZeroBalances: params.includeZeroBalances,
+          view: "flat",
+        }}
+      />
 
       <TrialBalanceTable
         report={report}
