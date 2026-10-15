@@ -55,6 +55,16 @@ function cellText(value: ExportCell, type: ExportColumnType): string {
   return type === "number" ? Number(value).toFixed(2) : String(value);
 }
 
+function excelWorksheetName(title: string): string {
+  const sanitized = title
+    .replace(/[\\\/?*:\[\]]/g, " ")
+    .replace(/ {2,}/g, " ")
+    .trim()
+    .slice(0, 31)
+    .trim();
+  return sanitized || "Report";
+}
+
 function addExcelRow(
   sheet: ExcelJS.Worksheet,
   row: ExportRow,
@@ -80,7 +90,7 @@ function addExcelRow(
 
 export async function writeExcel(table: ExportTable): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(table.title);
+  const sheet = workbook.addWorksheet(excelWorksheetName(table.title));
   sheet.pageSetup.fitToWidth = 1;
   sheet.pageSetup.fitToHeight = 0;
   sheet.pageSetup.orientation =

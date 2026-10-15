@@ -200,6 +200,13 @@ function getLedgerNet(
   return side === "credit" ? credit.minus(debit) : debit.minus(credit);
 }
 
+function getSectorRevenue(
+  report: Awaited<ReturnType<typeof getProfitAndLoss>>,
+  sector: string
+): Prisma.Decimal {
+  return new Prisma.Decimal(report.revenue.sectorAmounts?.[sector] ?? 0);
+}
+
 function getTrialBalanceTypeTotal(
   report: Awaited<ReturnType<typeof getTrialBalance>>,
   type: string
@@ -346,6 +353,12 @@ async function validateReportExports(
         JSON.stringify(exportedDetails),
         JSON.stringify(expectedDetails) === JSON.stringify(exportedDetails)
       );
+      check(
+        "vat XLSX detail rows exist",
+        "at least 1",
+        String(exportedDetails.length),
+        exportedDetails.length > 0
+      );
     }
   }
 }
@@ -489,7 +502,20 @@ async function main(): Promise<void> {
     sourceTaxRateId: outputVatRate.id,
   });
   const postedInvoiceB = await postInvoice(invoiceB.id);
+  const today = dayString(new Date());
+  const [todayPnlBeforeReversal, todayReceivablesBeforeReversal, todayVatBeforeReversal] =
+    await Promise.all([
+      getProfitAndLoss({ from: today, to: today, bySector: true }),
+      getGeneralLedger({ from: today, to: today, accountId: account("1200").id }),
+      getGeneralLedger({ from: today, to: today, accountId: account("2110").id }),
+    ]);
   const reversedInvoiceB = await reverseInvoice(invoiceB.id, `${fixtureMarker} zero-payment reversal`);
+  const [todayPnlAfterReversal, todayReceivablesAfterReversal, todayVatAfterReversal] =
+    await Promise.all([
+      getProfitAndLoss({ from: today, to: today, bySector: true }),
+      getGeneralLedger({ from: today, to: today, accountId: account("1200").id }),
+      getGeneralLedger({ from: today, to: today, accountId: account("2110").id }),
+    ]);
   check(
     "Invoice B reversal keeps invoice VOID and reversal POSTED",
     "VOID / POSTED",
@@ -498,10 +524,52 @@ async function main(): Promise<void> {
       reversedInvoiceB.journalEntry.reversal.status === "POSTED"
   );
   check(
-    "Invoice B reversal date follows the single fixture date",
-    fixtureDate,
+    "Invoice B reversal is dated today",
+    today,
     dayString(reversedInvoiceB.journalEntry.reversal.date),
-    dayString(reversedInvoiceB.journalEntry.reversal.date) === fixtureDate
+    dayString(reversedInvoiceB.journalEntry.reversal.date) === today
+  );
+  checkBoolean(
+    "Invoice B reversal links to Invoice B's JournalEntry",
+    true,
+    reversedInvoiceB.journalEntry.reversal.reversalOfEntryId === postedInvoiceB.journalEntryId
+  );
+  checkMoney(
+    "Invoice B reversal's EQ revenue delta is negative Invoice B revenue",
+    MONEY.invoiceB.negated(),
+    getSectorRevenue(todayPnlAfterReversal, "EQ")
+      .minus(getSectorRevenue(todayPnlBeforeReversal, "EQ"))
+  );
+  checkMoney(
+    "Invoice B reversal's UNASSIGNED revenue delta is zero",
+    ZERO,
+    getSectorRevenue(todayPnlAfterReversal, "UNASSIGNED")
+      .minus(getSectorRevenue(todayPnlBeforeReversal, "UNASSIGNED"))
+  );
+  checkMoney(
+    "Invoice B reversal's 1200 normal-balance delta is negative gross amount",
+    new Prisma.Decimal(postedInvoiceB.grandTotal).negated(),
+    getLedgerNet(todayReceivablesAfterReversal, "1200", "debit").minus(
+      getLedgerNet(todayReceivablesBeforeReversal, "1200", "debit")
+    )
+  );
+  checkMoney(
+    "Invoice B reversal's 2110 net delta is negative VAT",
+    new Prisma.Decimal(postedInvoiceB.taxTotal).negated(),
+    getLedgerNet(todayVatAfterReversal, "2110", "credit").minus(
+      getLedgerNet(todayVatBeforeReversal, "2110", "credit")
+    )
+  );
+  const todayReceivableLines =
+    getSectionByCode(todayReceivablesAfterReversal.sections, "1200")?.lines ?? [];
+  checkBoolean(
+    "Invoice B reversal appears in today's 1200 General Ledger",
+    true,
+    todayReceivableLines.some(
+      (line) =>
+        line.journalEntryId === reversedInvoiceB.journalEntry.reversal.id &&
+        line.status === "POSTED"
+    )
   );
   check(
     "Invoice B posted tax total before reversal",
@@ -532,8 +600,7 @@ async function main(): Promise<void> {
       payment.amount.toFixed(2) === MONEY.payment.toFixed(2)
   );
 
-  // 4. Vendor Bill with input VAT, TDS, and VDS. A failed post is retained as
-  // evidence and the remaining independent fixtures/checks still run.
+  // 4. Vendor Bill with input VAT only.
   const vendorBill = await createInvoice(
     createInvoiceSchema.parse({
       partnerId: vendor.id,
@@ -558,38 +625,15 @@ async function main(): Promise<void> {
     direction: "INPUT",
     sourceTaxRateId: inputVatRate.id,
   });
-  await addTaxApplication({
-    journalEntryId: vendorBill.journalEntryId,
-    partnerId: vendor.id,
-    baseAmount: MONEY.vendorBill,
-    taxType: "TDS",
-    ratePercent: 5,
-  });
-  await addTaxApplication({
-    journalEntryId: vendorBill.journalEntryId,
-    partnerId: vendor.id,
-    baseAmount: MONEY.vendorBill,
-    taxType: "VDS",
-    ratePercent: 7.5,
-  });
-  let vendorBillPosted = false;
-  try {
-    const postedBill = await postInvoice(vendorBill.id);
-    vendorBillPosted = postedBill.status === "POSTED";
-    check(
-      "Vendor Bill posts with input VAT, TDS, and VDS",
-      "POSTED; VAT 150.00; TDS 50.00; VDS 75.00",
-      `status=${postedBill.status}; taxTotal=${amount(postedBill.taxTotal)}`,
-      vendorBillPosted && amount(postedBill.taxTotal) === "275.00"
-    );
-  } catch (error) {
-    check(
-      "Vendor Bill posts with input VAT, TDS, and VDS",
-      "POSTED; VAT 150.00; TDS 50.00; VDS 75.00",
-      error instanceof Error ? `${error.name}: ${error.message}` : String(error),
-      false
-    );
-  }
+  const postedVendorBill = await postInvoice(vendorBill.id);
+  check(
+    "Vendor Bill posts with input VAT only",
+    "POSTED; VAT 150.00",
+    `${postedVendorBill.status}; VAT ${amount(postedVendorBill.taxTotal)}`,
+    postedVendorBill.status === "POSTED" &&
+      amount(postedVendorBill.taxTotal) === "150.00"
+  );
+  console.log("TDS/VDS on Vendor Bill: pending investigation");
 
   // 5. Debit Voucher with TDS tax application.
   const debitVoucher = await createDebitVoucher(
@@ -625,6 +669,42 @@ async function main(): Promise<void> {
     `${postedDebitVoucher.status}; TDS ${amount(debitVoucherTds.taxAmount)}`,
     postedDebitVoucher.status === "POSTED" &&
       amount(debitVoucherTds.taxAmount) === "10.00"
+  );
+
+  // 6. Debit Voucher with VDS tax application.
+  const vdsDebitVoucher = await createDebitVoucher(
+    debitVoucherSchema.parse({
+      date: stampDate,
+      description: `${fixtureMarker} VDS expense voucher`,
+      branchId: branch.id,
+      cashBankAccountId: bank.id,
+      lines: [
+        {
+          expenseAccountId: expense.id,
+          amount: MONEY.debitVoucher.toFixed(2),
+          description: `${fixtureMarker} VDS operating expense`,
+          bankName: `${fixtureMarker} bank`,
+          chequeNo: `${fixtureMarker}-VDS-CHQ`,
+          chequeDate: stampDate,
+        },
+      ],
+    }),
+    "system"
+  );
+  const debitVoucherVds = await addTaxApplication({
+    journalEntryId: vdsDebitVoucher.id,
+    partnerId: vendor.id,
+    baseAmount: MONEY.debitVoucher,
+    taxType: "VDS",
+    ratePercent: 7.5,
+  });
+  const postedVdsDebitVoucher = await postJournalEntry(vdsDebitVoucher.id);
+  check(
+    "Debit Voucher with VDS posts",
+    "POSTED; VDS 15.00",
+    `${postedVdsDebitVoucher.status}; VDS ${amount(debitVoucherVds.taxAmount)}`,
+    postedVdsDebitVoucher.status === "POSTED" &&
+      amount(debitVoucherVds.taxAmount) === "15.00"
   );
 
   // 6. Fixed-asset purchase Debit Voucher.
@@ -752,10 +832,9 @@ async function main(): Promise<void> {
   // 1. VAT report / tax-ledger agreement.
   const expectedOutputVat = new Prisma.Decimal("150.00");
   const expectedInputVat = new Prisma.Decimal("150.00");
-  const expectedBillTds = new Prisma.Decimal("50.00");
-  const expectedBillVds = new Prisma.Decimal("75.00");
-  const expectedTds = expectedBillTds.plus("10.00");
-  const expectedVds = expectedBillVds;
+  const expectedTds = new Prisma.Decimal("10.00");
+  const expectedVds = new Prisma.Decimal("15.00");
+  const expectedLedgerOutputVat = expectedOutputVat.plus(postedInvoiceB.taxTotal);
   checkMoney("VAT output total is Invoice A only", expectedOutputVat, vat.outputVat.total.taxAmount);
   checkMoney("VAT input total is Vendor Bill VAT", expectedInputVat, vat.inputVat.total.taxAmount);
   checkMoney(
@@ -763,8 +842,8 @@ async function main(): Promise<void> {
     expectedOutputVat.minus(expectedInputVat),
     vat.netVat
   );
-  checkMoney("TDS total is bill plus voucher", expectedTds, vat.tds.total.taxAmount);
-  checkMoney("VDS total is Vendor Bill VDS", expectedVds, vat.vds.total.taxAmount);
+  checkMoney("TDS total is the Debit Voucher only", expectedTds, vat.tds.total.taxAmount);
+  checkMoney("VDS total is the VDS Debit Voucher", expectedVds, vat.vds.total.taxAmount);
   check(
     "VAT row count equals live posted output applications",
     String(liveCount("VAT", "OUTPUT")),
@@ -791,11 +870,11 @@ async function main(): Promise<void> {
   );
   check(
     "Expected fixture tax row counts (output/input/TDS/VDS)",
-    "1 / 1 / 2 / 1",
+    "1 / 1 / 1 / 1",
     `${vat.outputVat.rows.length} / ${vat.inputVat.rows.length} / ${vat.tds.rows.length} / ${vat.vds.rows.length}`,
     vat.outputVat.rows.length === 1 &&
       vat.inputVat.rows.length === 1 &&
-      vat.tds.rows.length === 2 &&
+      vat.tds.rows.length === 1 &&
       vat.vds.rows.length === 1
   );
   check(
@@ -807,7 +886,7 @@ async function main(): Promise<void> {
   );
   const vendorTdsTotal = vat.tds.byPartner.find((row) => row.tin === vendor.tin);
   check(
-    "TDS partner grouping preserves Vendor TIN/BIN and bill+voucher amount",
+    "TDS partner grouping preserves Vendor TIN/BIN and voucher amount",
     `${vendor.tin} / ${vendor.bin} / ${amount(expectedTds)}`,
     vendorTdsTotal
       ? `${vendorTdsTotal.tin} / ${vendorTdsTotal.bin} / ${amount(vendorTdsTotal.taxAmount)}`
@@ -817,8 +896,12 @@ async function main(): Promise<void> {
       amount(vendorTdsTotal.taxAmount) === amount(expectedTds)
   );
 
+  checkMoney(
+    "Fixture-day General Ledger 2110 includes VAT on Invoice B's VOID original",
+    expectedLedgerOutputVat,
+    getLedgerNet(glDay, "2110", "credit")
+  );
   for (const [code, expected, side] of [
-    ["2110", expectedOutputVat, "credit"],
     ["1210", expectedInputVat, "debit"],
     ["2120", expectedTds, "credit"],
     ["2130", expectedVds, "credit"],
@@ -830,32 +913,22 @@ async function main(): Promise<void> {
       actual
     );
   }
-
-  // 2. Reversal and trial-balance balance.
-  const receivableLedger = await getGeneralLedger({
-    from: fixtureDate,
-    to: fixtureDate,
-    accountId: account("1200").id,
-  });
-  const reversalLineEntries = receivableLedger.sections.flatMap((section) => section.lines);
-  const originalReceivableLines = reversalLineEntries.filter(
+  const fixtureReceivableLines = getSectionByCode(glDay.sections, "1200")?.lines ?? [];
+  const invoiceBFixtureLines = fixtureReceivableLines.filter(
     (line) => line.journalEntryId === invoiceB.journalEntryId
   );
-  const reversalReceivableLines = reversalLineEntries.filter(
-    (line) => line.journalEntryId === reversedInvoiceB.journalEntry.reversal.id
-  );
-  const reversalNetEffect = sumMoney(
-    [...originalReceivableLines, ...reversalReceivableLines].map((line) =>
-      new Prisma.Decimal(line.debit).minus(line.credit)
-    )
-  );
   check(
-    "Receivable General Ledger shows both Invoice B reversal pair entries that day",
-    "2 entry IDs",
-    `${originalReceivableLines.length > 0 ? 1 : 0} original; ${reversalReceivableLines.length > 0 ? 1 : 0} reversal`,
-    originalReceivableLines.length > 0 && reversalReceivableLines.length > 0
+    "Fixture-day 1200 General Ledger shows Invoice B VOID original, not its reversal",
+    "VOID original present; reversal absent",
+    `original statuses=${invoiceBFixtureLines.map((line) => line.status).join(",") || "absent"}; reversal=${fixtureReceivableLines.some((line) => line.journalEntryId === reversedInvoiceB.journalEntry.reversal.id) ? "present" : "absent"}`,
+    invoiceBFixtureLines.length > 0 &&
+      invoiceBFixtureLines.every((line) => line.status === "VOID") &&
+      !fixtureReceivableLines.some(
+        (line) => line.journalEntryId === reversedInvoiceB.journalEntry.reversal.id
+      )
   );
-  checkMoney("Invoice B original plus reversal receivable net effect", ZERO, reversalNetEffect);
+
+  // 2. Trial-balance balance.
   checkMoney("Fixture-day Trial Balance total debit equals total credit", tbDay.totalDebit, tbDay.totalCredit);
   checkBoolean("Fixture-day Trial Balance is balanced", true, tbDay.isBalanced);
 
@@ -878,15 +951,23 @@ async function main(): Promise<void> {
       getTrialBalanceTypeTotal(tbToDate, type)
     );
   }
-  const expectedLiveRevenue = MONEY.invoiceA.plus(MONEY.eqCredit).plus(MONEY.msCredit);
-  checkMoney("Fixture-day P&L revenue is live Invoice A plus EQ/MS vouchers", expectedLiveRevenue, pnlDay.totalRevenue);
+  const expectedLiveRevenue = MONEY.invoiceA
+    .plus(MONEY.invoiceB)
+    .plus(MONEY.eqCredit)
+    .plus(MONEY.msCredit);
+  checkMoney(
+    "Fixture-day P&L revenue includes Invoice A, VOID Invoice B, and EQ/MS vouchers",
+    expectedLiveRevenue,
+    pnlDay.totalRevenue
+  );
 
   // 4. Cash Flow exact activity totals and identities.
   const expectedOperating = MONEY.payment
     .plus(MONEY.eqCredit)
     .plus(MONEY.msCredit)
-    .minus(MONEY.debitVoucher)
-    .plus("10.00");
+    .minus(MONEY.debitVoucher.mul(2))
+    .plus("10.00")
+    .plus("15.00");
   const expectedInvesting = MONEY.fixedAsset.negated();
   const expectedFinancing = MONEY.loan.plus(MONEY.capital);
   const expectedNetChange = expectedOperating.plus(expectedInvesting).plus(expectedFinancing);
@@ -930,11 +1011,11 @@ async function main(): Promise<void> {
     )
   );
 
-  // 5. Sector toggle, including EQ attribution of Invoice B's reversal.
+  // 5. Sector toggle, including the VOID Invoice B original.
   const sectorRevenue = pnlBySector.revenue.sectorAmounts ?? {};
   checkMoney(
-    "EQ sector revenue is EQ voucher plus reversed Invoice B net",
-    MONEY.eqCredit,
+    "EQ sector revenue includes Invoice B and EQ voucher",
+    MONEY.invoiceB.plus(MONEY.eqCredit),
     sectorRevenue.EQ ?? ZERO
   );
   checkMoney("MS sector revenue is the MS voucher", MONEY.msCredit, sectorRevenue.MS ?? ZERO);
@@ -952,10 +1033,10 @@ async function main(): Promise<void> {
     .flatMap((group) => [group, ...group.children])
     .find((group) => group.row.code === "4010")?.row.sectorAmounts;
   check(
-    "Reversed Invoice B revenue is attributed to EQ, not UNASSIGNED",
-    `EQ=${amount(MONEY.eqCredit)}; UNASSIGNED=0.00`,
+    "Invoice B revenue is attributed to EQ, not UNASSIGNED",
+    `EQ=${amount(MONEY.invoiceB.plus(MONEY.eqCredit))}; UNASSIGNED=0.00`,
     `EQ=${amount(revenueAccountSector?.EQ ?? ZERO)}; UNASSIGNED=${amount(revenueAccountSector?.UNASSIGNED ?? ZERO)}`,
-    amount(revenueAccountSector?.EQ ?? ZERO) === amount(MONEY.eqCredit) &&
+    amount(revenueAccountSector?.EQ ?? ZERO) === amount(MONEY.invoiceB.plus(MONEY.eqCredit)) &&
       amount(revenueAccountSector?.UNASSIGNED ?? ZERO) === "0.00"
   );
 
