@@ -7,6 +7,7 @@ import type { BalanceSheetGroup, BalanceSheetResult } from "@/modules/accounting
 import type { CashFlowCategory, CashFlowResult } from "@/modules/accounting/services/cash-flow.service";
 import type { GeneralLedgerResult } from "@/modules/accounting/services/general-ledger.service";
 import type { TrialBalanceGroup, TrialBalanceResult } from "@/modules/accounting/services/trial-balance.service";
+import type { VatReportResult } from "@/modules/accounting/services/vat-report.service";
 import type { ExportColumn, ExportRow, ExportTable } from "@/modules/accounting/export/report-export";
 
 type ReportFilters = {
@@ -395,5 +396,102 @@ export function mapCashFlow(
       ),
     ],
     indentColumn: 1,
+  };
+}
+
+export function mapVatReport(
+  report: VatReportResult,
+  filters: Pick<ReportFilters, "from" | "to">
+): ExportTable {
+  const rows: ExportRow[] = [];
+  const cells = (values: ExportRow["cells"], bold = false) =>
+    row(values, bold ? { bold: true } : {});
+  const sectionHeading = (title: string) =>
+    rows.push(cells([title, null, null, null, null, null, null, null], true));
+  const addDetails = (items: VatReportResult["outputVat"]["rows"]) => {
+    for (const item of items) {
+      rows.push(
+        cells([
+          item.date,
+          item.documentNumber,
+          item.partnerName ?? "No partner (voucher)",
+          item.tin,
+          item.bin,
+          item.baseAmount,
+          item.ratePercent,
+          item.taxAmount,
+        ])
+      );
+    }
+  };
+  const addTaxTotal = (title: string, total: VatReportResult["outputVat"]["total"]) => {
+    rows.push(
+      cells([title, null, null, null, null, total.baseAmount, null, total.taxAmount], true)
+    );
+  };
+
+  sectionHeading("Output VAT (sales)");
+  addDetails(report.outputVat.rows);
+  addTaxTotal("Total Output VAT", report.outputVat.total);
+
+  sectionHeading("Input VAT (purchases)");
+  addDetails(report.inputVat.rows);
+  addTaxTotal("Total Input VAT", report.inputVat.total);
+
+  sectionHeading("Net VAT");
+  rows.push(cells(["Output VAT less Input VAT", null, null, null, null, null, null, report.netVat], true));
+
+  sectionHeading("TDS by month");
+  for (const item of report.tds.byMonth) {
+    rows.push(cells([item.month, null, null, null, null, item.baseAmount, null, item.taxAmount]));
+  }
+  sectionHeading("TDS by partner");
+  for (const item of report.tds.byPartner) {
+    rows.push(
+      cells([
+        null,
+        null,
+        item.partnerName,
+        item.tin,
+        item.bin,
+        item.baseAmount,
+        null,
+        item.taxAmount,
+      ])
+    );
+  }
+  sectionHeading("TDS details");
+  addDetails(report.tds.rows);
+  addTaxTotal("Total TDS", report.tds.total);
+
+  sectionHeading("VDS by month");
+  for (const item of report.vds.byMonth) {
+    rows.push(cells([item.month, null, null, null, null, item.baseAmount, null, item.taxAmount]));
+  }
+  sectionHeading("VDS details");
+  addDetails(report.vds.rows);
+  addTaxTotal("Total VDS", report.vds.total);
+
+  const from = dateValue(filters.from);
+  const to = dateValue(filters.to);
+  return {
+    title: "VAT / TDS / VDS Report",
+    subtitleLines: [
+      `Date range: ${from ?? "Beginning"} to ${to ?? "Present"}`,
+      "Amounts in BDT",
+      `Generated: ${new Date().toISOString()}`,
+    ],
+    columns: [
+      textColumn("Date / period", 1),
+      textColumn("Document number", 1.25),
+      textColumn("Partner", 1.5),
+      textColumn("TIN", 1),
+      textColumn("BIN", 1),
+      numberColumn("Base amount", 1),
+      numberColumn("Rate %", 0.7),
+      numberColumn("Tax amount", 1),
+    ],
+    rows,
+    footerRows: [],
   };
 }

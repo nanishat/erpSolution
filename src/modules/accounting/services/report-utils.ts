@@ -29,6 +29,16 @@ export const reportFiltersSchema = z
     path: ["from"],
   });
 
+export const vatReportQuerySchema = z
+  .object({
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+  })
+  .refine(reportDateRangeIsValid, {
+    message: "'from' must be on or before 'to'",
+    path: ["from"],
+  });
+
 export const profitAndLossQuerySchema = reportFiltersSchema.extend({
   bySector: z
     .enum(["true", "false"])

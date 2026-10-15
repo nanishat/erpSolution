@@ -34,6 +34,7 @@ const navItems: NavEntry[] = [
       { label: "Balance Sheet", href: "/accounting/reports/balance-sheet" },
       { label: "Cash Flow", href: "/accounting/reports/cash-flow" },
       { label: "General Ledger", href: "/accounting/reports/general-ledger" },
+      { label: "VAT / TDS / VDS", href: "/accounting/reports/vat" },
       { label: "Customer Invoices", href: "/accounting/invoices" },
       { label: "Vendor Bills", href: "/accounting/vendor-bills" },
       { label: "New Payment", href: "/accounting/payments/new" },
