@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { InvoiceDirection, InvoiceStatus, type Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import {
@@ -310,6 +310,82 @@ export async function getInvoices(filter: ListInvoicesQuery): Promise<InvoiceWit
     orderBy: { date: "desc" },
   });
   return invoices.map(serializeInvoice);
+}
+
+export type PaginatedInvoice = {
+  id: string;
+  invoiceNumber: string;
+  date: Date;
+  grandTotal: number;
+  balanceDue: number;
+  status: InvoiceStatus;
+  partner: { name: string };
+};
+
+export async function getPaginatedInvoices({
+  direction,
+  page,
+  pageSize,
+  search,
+  status,
+  partnerId,
+  dateFrom,
+  dateTo,
+}: {
+  direction: InvoiceDirection;
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: InvoiceStatus;
+  partnerId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+}): Promise<{ items: PaginatedInvoice[]; total: number; page: number }> {
+  const where: Prisma.InvoiceWhereInput = {
+    direction,
+    ...(status && { status }),
+    ...(partnerId && { partnerId }),
+    ...(search && {
+      OR: [
+        { invoiceNumber: { contains: search, mode: "insensitive" } },
+        { partner: { name: { contains: search, mode: "insensitive" } } },
+      ],
+    }),
+    ...((dateFrom || dateTo) && {
+      date: {
+        ...(dateFrom && { gte: dateFrom }),
+        ...(dateTo && { lt: new Date(dateTo.getTime() + 24 * 60 * 60 * 1000) }),
+      },
+    }),
+  };
+
+  const total = await db.invoice.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const invoices = await db.invoice.findMany({
+    where,
+    select: {
+      id: true,
+      invoiceNumber: true,
+      date: true,
+      grandTotal: true,
+      amountPaid: true,
+      status: true,
+      partner: { select: { name: true } },
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+  });
+
+  return {
+    items: invoices.map(({ grandTotal, amountPaid, ...invoice }) => ({
+      ...invoice,
+      grandTotal: Number(grandTotal),
+      balanceDue: Number(grandTotal) - Number(amountPaid),
+    })),
+    total,
+    page: currentPage,
+  };
 }
 
 export async function getInvoiceById(id: string): Promise<InvoiceWithLines | null> {

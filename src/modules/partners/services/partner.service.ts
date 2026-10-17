@@ -1,4 +1,4 @@
-import type { Partner as PartnerRow, Prisma } from "@prisma/client";
+import type { Partner as PartnerRow, PartnerType, Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type {
@@ -7,10 +7,8 @@ import type {
   UpdatePartnerInput,
 } from "@/modules/partners/validations/partner.schema";
 
-// outstandingBalance/payableBalance are Prisma Decimals, which React Server
-// Components can't pass to "use client" components ("Decimal objects are
-// not supported") — convert to plain numbers before this ever reaches
-// PartnerTable/PartnerForm, mirroring serializeProductService().
+// outstandingBalance/payableBalance are Prisma Decimals; convert them to
+// plain numbers before partner data reaches a page or form.
 export type Partner = Omit<PartnerRow, "outstandingBalance" | "payableBalance"> & {
   outstandingBalance: number;
   payableBalance: number;
@@ -66,6 +64,78 @@ export async function listPartners(filter: ListPartnersQuery): Promise<Partner[]
     orderBy: { name: "asc" },
   });
   return partners.map(serializePartner);
+}
+
+type PaginatedPartnerFields = {
+  id: string;
+  name: string;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  tin: string;
+  isActive: boolean;
+};
+
+export type PaginatedPartner = PaginatedPartnerFields &
+  (
+    | { type: "CUSTOMER"; outstandingBalance: number }
+    | { type: "VENDOR"; payableBalance: number }
+  );
+
+export async function getPaginatedPartners({
+  page,
+  pageSize,
+  search,
+  type,
+  isActive = true,
+}: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  type?: PartnerType;
+  isActive?: boolean | "all";
+}): Promise<{ items: PaginatedPartner[]; total: number; page: number }> {
+  const where: Prisma.PartnerWhereInput = {
+    ...(type && { type }),
+    ...(isActive !== "all" && { isActive }),
+    ...(search && {
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { tin: { contains: search, mode: "insensitive" } },
+        { bin: { contains: search, mode: "insensitive" } },
+      ],
+    }),
+  };
+  const total = await db.partner.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const partners = await db.partner.findMany({
+    where,
+    select: {
+      id: true,
+      type: true,
+      name: true,
+      contactPerson: true,
+      phone: true,
+      email: true,
+      tin: true,
+      isActive: true,
+      outstandingBalance: true,
+      payableBalance: true,
+    },
+    orderBy: { name: "asc" },
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+  });
+
+  return {
+    items: partners.map(({ outstandingBalance, payableBalance, ...partner }) =>
+      partner.type === "CUSTOMER"
+        ? { ...partner, type: "CUSTOMER", outstandingBalance: Number(outstandingBalance) }
+        : { ...partner, type: "VENDOR", payableBalance: Number(payableBalance) }
+    ),
+    total,
+    page: currentPage,
+  };
 }
 
 export async function getPartnerById(id: string): Promise<Partner> {

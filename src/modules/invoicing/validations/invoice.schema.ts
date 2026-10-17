@@ -67,9 +67,8 @@ export const reverseInvoiceSchema = z.object({
   reason: z.string().trim().min(1).optional(),
 });
 
-// Powers both the Customer Invoice list (direction: CUSTOMER, this task) and
-// the future Vendor Bill list (direction: VENDOR) — see InvoiceTable's own
-// doc comment for how the two share this same query shape.
+// Powers API invoice listing for either direction. The paginated accounting
+// pages apply the same filters directly in their service queries.
 export const listInvoicesQuerySchema = z.object({
   direction: z.nativeEnum(InvoiceDirection).optional(),
   status: z.nativeEnum(InvoiceStatus).optional(),
