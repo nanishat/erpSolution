@@ -63,7 +63,7 @@ export async function listProductServices(
   const where: Prisma.ProductServiceWhereInput = {
     type: filter.type,
     // Default list excludes deactivated rows; pass isActive=false explicitly to see them.
-    isActive: filter.isActive ?? true,
+    isActive: filter.isActive === "all" ? undefined : (filter.isActive ?? true),
   };
 
   if (filter.search) {
@@ -80,6 +80,45 @@ export async function listProductServices(
   });
 
   return productServices.map(serializeProductService);
+}
+
+export async function getPaginatedProductServices({
+  page,
+  pageSize,
+  search,
+  type,
+  isActive,
+}: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  type?: ListProductServicesQuery["type"];
+  isActive?: boolean | "all";
+}): Promise<{ items: ProductServiceWithAccounts[]; total: number; page: number }> {
+  const where: Prisma.ProductServiceWhereInput = {
+    ...(type && { type }),
+    ...(isActive !== "all" && { isActive: isActive ?? true }),
+    ...(search && {
+      OR: [
+        { code: { contains: search, mode: "insensitive" } },
+        { name: { contains: search, mode: "insensitive" } },
+      ],
+    }),
+  };
+  const total = await db.productService.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const productServices = await db.productService.findMany({
+    where,
+    include: productServiceWithAccountsInclude,
+    orderBy: { name: "asc" },
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+  });
+  return {
+    items: productServices.map(serializeProductService),
+    total,
+    page: currentPage,
+  };
 }
 
 export async function getProductServiceById(id: string): Promise<ProductServiceWithAccounts> {

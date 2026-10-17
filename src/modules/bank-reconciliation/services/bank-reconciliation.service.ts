@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { BankStatementStatus, Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type {
@@ -379,6 +379,64 @@ export async function listBankStatements(): Promise<BankStatementListItemDTO[]> 
       ignoredCount,
     };
   });
+}
+
+export async function getPaginatedBankStatements({
+  page,
+  pageSize,
+  search,
+  status,
+}: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: BankStatementStatus;
+}): Promise<{ items: BankStatementListItemDTO[]; total: number; page: number }> {
+  const where: Prisma.BankStatementWhereInput = {
+    ...(status && { status }),
+    ...(search && {
+      account: {
+        OR: [
+          { code: { contains: search, mode: "insensitive" } },
+          { name: { contains: search, mode: "insensitive" } },
+        ],
+      },
+    }),
+  };
+  const total = await db.bankStatement.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const statements = await db.bankStatement.findMany({
+    where,
+    orderBy: { importedAt: "desc" },
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+    include: {
+      account: { select: { code: true, name: true } },
+      lines: { select: { matchStatus: true } },
+    },
+  });
+  const items = statements.map((statement) => {
+    const matchedCount = statement.lines.filter((line) => line.matchStatus === "MATCHED").length;
+    const unmatchedCount = statement.lines.filter((line) => line.matchStatus === "UNMATCHED").length;
+    const ignoredCount = statement.lines.filter((line) => line.matchStatus === "IGNORED").length;
+    return {
+      id: statement.id,
+      accountId: statement.accountId,
+      accountCode: statement.account.code,
+      accountName: statement.account.name,
+      periodStart: statement.periodStart,
+      periodEnd: statement.periodEnd,
+      openingBalance: Number(statement.openingBalance),
+      closingBalance: Number(statement.closingBalance),
+      status: statement.status,
+      importedAt: statement.importedAt,
+      totalLines: statement.lines.length,
+      matchedCount,
+      unmatchedCount,
+      ignoredCount,
+    };
+  });
+  return { items, total, page: currentPage };
 }
 
 export type MatchCandidate = {

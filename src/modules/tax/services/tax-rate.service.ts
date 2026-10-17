@@ -9,7 +9,7 @@ import type {
 
 // ratePercent is a Prisma Decimal, which React Server Components can't pass
 // to "use client" components ("Decimal objects are not supported") —
-// convert to a plain number before this ever reaches TaxRateTable or
+// convert to a plain number before this ever reaches a page or
 // AddTaxApplicationForm, mirroring serializeProductService().
 export type TaxRate = Omit<TaxRateRow, "ratePercent"> & { ratePercent: number };
 
@@ -30,11 +30,37 @@ export async function listTaxRates(filter: ListTaxRatesQuery): Promise<TaxRate[]
       type: filter.type,
       direction: filter.direction,
       // Default list excludes deactivated rates; pass isActive=false explicitly to see them.
-      isActive: filter.isActive ?? true,
+      isActive: filter.isActive === "all" ? undefined : (filter.isActive ?? true),
     },
     orderBy: [{ type: "asc" }, { direction: "asc" }, { ratePercent: "asc" }],
   });
   return rates.map(serializeTaxRate);
+}
+
+export async function getPaginatedTaxRates({
+  page,
+  pageSize,
+  direction,
+  isActive,
+}: {
+  page: number;
+  pageSize: number;
+  direction?: ListTaxRatesQuery["direction"];
+  isActive?: boolean | "all";
+}): Promise<{ items: TaxRate[]; total: number; page: number }> {
+  const where = {
+    ...(direction && { direction }),
+    ...(isActive !== "all" && { isActive: isActive ?? true }),
+  };
+  const total = await db.taxRate.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const rates = await db.taxRate.findMany({
+    where,
+    orderBy: [{ direction: "asc" }, { name: "asc" }],
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+  });
+  return { items: rates.map(serializeTaxRate), total, page: currentPage };
 }
 
 export async function getTaxRateById(id: string): Promise<TaxRate> {

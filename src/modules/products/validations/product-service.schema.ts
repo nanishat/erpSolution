@@ -39,8 +39,8 @@ export const listProductServicesQuerySchema = z.object({
   // z.coerce.boolean() would treat the string "false" as truthy (any
   // non-empty string coerces to true) — parse the literal query value instead.
   isActive: z
-    .enum(["true", "false"])
-    .transform((v) => v === "true")
+    .enum(["true", "false", "all"])
+    .transform((value) => (value === "all" ? "all" : value === "true"))
     .optional(),
   search: z.string().optional(),
 });

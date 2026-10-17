@@ -91,17 +91,79 @@ export async function getReconcilableChartOfAccounts(): Promise<ChartOfAccountOp
 export async function listChartOfAccounts(
   filter: ListChartOfAccountsQuery
 ): Promise<ChartOfAccountWithChildren[]> {
+  const where: Prisma.ChartOfAccountWhereInput = {
+    type: filter.type,
+    subType: filter.subType,
+    isActive: filter.isActive === "all" ? undefined : filter.isActive,
+    parentId: filter.parentId,
+    ...(filter.search && {
+      OR: [
+        { code: { contains: filter.search, mode: "insensitive" } },
+        { name: { contains: filter.search, mode: "insensitive" } },
+      ],
+    }),
+  };
   const accounts = await db.chartOfAccount.findMany({
-    where: {
-      type: filter.type,
-      subType: filter.subType,
-      isActive: filter.isActive,
-      parentId: filter.parentId,
-    },
+    where,
     include: chartOfAccountWithChildrenInclude,
     orderBy: { code: "asc" },
   });
   return accounts.map(serializeChartOfAccount);
+}
+
+export type PaginatedChartOfAccount = {
+  id: string;
+  code: string;
+  name: string;
+  type: ChartOfAccountRow["type"];
+  subType: ChartOfAccountRow["subType"];
+  parentId: string | null;
+  isPostable: boolean;
+  isActive: boolean;
+};
+
+export async function getPaginatedChartOfAccounts({
+  page,
+  pageSize,
+  search,
+  type,
+  isActive,
+}: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  type?: ChartOfAccountRow["type"];
+  isActive?: boolean | "all";
+}): Promise<{ items: PaginatedChartOfAccount[]; total: number; page: number }> {
+  const where: Prisma.ChartOfAccountWhereInput = {
+    ...(type && { type }),
+    ...(isActive !== "all" && { isActive: isActive ?? true }),
+    ...(search && {
+      OR: [
+        { code: { contains: search, mode: "insensitive" } },
+        { name: { contains: search, mode: "insensitive" } },
+      ],
+    }),
+  };
+  const total = await db.chartOfAccount.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const items = await db.chartOfAccount.findMany({
+    where,
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      type: true,
+      subType: true,
+      parentId: true,
+      isPostable: true,
+      isActive: true,
+    },
+    orderBy: { code: "asc" },
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+  });
+  return { items, total, page: currentPage };
 }
 
 export async function getChartOfAccountById(id: string): Promise<ChartOfAccountWithChildren> {

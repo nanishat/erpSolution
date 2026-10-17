@@ -36,10 +36,11 @@ export const listChartOfAccountsQuerySchema = z.object({
   type: z.nativeEnum(AccountType).optional(),
   subType: z.nativeEnum(AccountSubType).optional(),
   isActive: z
-    .enum(["true", "false"])
-    .transform((v) => v === "true")
+    .enum(["true", "false", "all"])
+    .transform((value) => (value === "all" ? "all" : value === "true"))
     .optional(),
   parentId: z.string().optional(),
+  search: z.string().optional(),
 });
 
 export type CreateChartOfAccountInput = z.infer<typeof createChartOfAccountSchema>;
