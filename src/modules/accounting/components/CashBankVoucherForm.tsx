@@ -123,7 +123,7 @@ export function CashBankVoucherForm({
         return;
       }
 
-      router.push("/accounting");
+      router.push("/accounting/journal-entries");
       router.refresh();
     });
   };
@@ -299,7 +299,7 @@ export function CashBankVoucherForm({
         <Button type="submit" disabled={isPending}>
           {isPending ? "Saving..." : "Create journal entry"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/accounting")}>
+        <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
           Cancel
         </Button>
       </div>

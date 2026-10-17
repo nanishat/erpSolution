@@ -37,7 +37,7 @@ export function JournalEntryTypePicker({
               key={voucherType}
               type="button"
               onClick={() => setSelected(voucherType)}
-              className="rounded-lg border border-border p-4 text-left transition-colors hover:border-primary hover:bg-muted"
+              className="rounded-lg border border-border p-4 text-left hover:border-primary hover:bg-muted"
             >
               <div className="font-medium">{VOUCHER_TYPE_LABELS[voucherType]}</div>
               <div className="mt-1 text-xs text-muted-foreground">

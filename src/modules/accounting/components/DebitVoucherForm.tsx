@@ -143,7 +143,7 @@ export function DebitVoucherForm({
         return;
       }
 
-      router.push("/accounting");
+      router.push("/accounting/journal-entries");
       router.refresh();
     });
   };
@@ -327,7 +327,7 @@ export function DebitVoucherForm({
         <Button type="submit" disabled={isPending || !canSubmit}>
           {isPending ? "Saving..." : "Create journal entry"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/accounting")}>
+        <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
           Cancel
         </Button>
       </div>

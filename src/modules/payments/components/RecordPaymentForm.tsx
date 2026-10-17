@@ -315,7 +315,7 @@ export function RecordPaymentForm({
         <Button type="submit" disabled={isPending}>
           {isPending ? "Saving..." : "Record payment"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/accounting")}>
+        <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
           Cancel
         </Button>
       </div>

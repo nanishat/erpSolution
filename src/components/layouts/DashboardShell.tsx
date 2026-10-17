@@ -1,60 +1,61 @@
 "use client";
 
 // TODO(Phase 7 — Roles/Audit Trail/Multi-Branch): once User.role exists, this
-// is where role-based visibility belongs — e.g. filtering `navItems` (or a
+// is where role-based visibility belongs — e.g. filtering `navGroups` (or a
 // group's `items`) by role before rendering, or gating an entire NavGroup
 // behind a permission check. Nothing here does that yet: every item below is
 // visible to everyone, regardless of identity.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-
-type NavLink = { type: "link"; label: string; href: string };
-type NavGroup = { type: "group"; label: string; items: { label: string; href: string }[] };
-type NavEntry = NavLink | NavGroup;
-
-// Accounting is a group so future phases (Tax Engine, Invoicing, Payments &
-// Reconciliation, Financial Reports, ...) slot in as one more { label, href }
-// entry in `items` below — no structural changes to this component needed.
-const navItems: NavEntry[] = [
-  {
-    type: "group",
-    label: "Accounting",
-    items: [
-      // The /accounting landing page is the journal entries list — there's no
-      // separate overview/dashboard route (yet), so this doubles as both.
-      { label: "Journal Entries", href: "/accounting" },
-      { label: "Chart of Accounts", href: "/accounting/chart-of-accounts" },
-      { label: "Trial Balance", href: "/accounting/reports/trial-balance" },
-      { label: "Profit & Loss", href: "/accounting/reports/profit-loss" },
-      { label: "Balance Sheet", href: "/accounting/reports/balance-sheet" },
-      { label: "Cash Flow", href: "/accounting/reports/cash-flow" },
-      { label: "General Ledger", href: "/accounting/reports/general-ledger" },
-      { label: "VAT / TDS / VDS", href: "/accounting/reports/vat" },
-      { label: "Customer Invoices", href: "/accounting/invoices" },
-      { label: "Vendor Bills", href: "/accounting/vendor-bills" },
-      { label: "New Payment", href: "/accounting/payments/new" },
-      { label: "Bank Reconciliation", href: "/accounting/bank-reconciliation" },
-      { label: "Partners", href: "/accounting/partners" },
-      { label: "Products & Services", href: "/accounting/product-services" },
-      { label: "Tax Rates", href: "/accounting/tax-rates" },
-    ],
-  },
-  { type: "link", label: "HR", href: "/hr" },
-  { type: "link", label: "Inventory", href: "/inventory" },
-];
+import { Breadcrumbs } from "@/components/layouts/Breadcrumbs";
+import { dashboardNavItem, navGroups, type NavGroup, type NavItem } from "./nav-config";
 
 function isActiveHref(pathname: string | null, href: string) {
   return pathname === href || pathname?.startsWith(`${href}/`);
 }
 
+function getActiveNavItem(pathname: string | null): NavItem | null {
+  if (!pathname || pathname === dashboardNavItem.href) {
+    return null;
+  }
+
+  return navGroups
+    .flatMap((group) => group.items)
+    .filter((item) => isActiveHref(pathname, item.href))
+    .sort((a, b) => b.href.length - a.href.length)[0] ?? null;
+}
+
+function getActiveGroup(pathname: string | null): NavGroup | undefined {
+  const activeItem = getActiveNavItem(pathname);
+  return navGroups.find((group) =>
+    group.items.some((item) => item.href === activeItem?.href)
+  );
+}
+
+function getInitialCollapsedGroups(pathname: string | null) {
+  const activeGroup = getActiveGroup(pathname);
+  return new Set(
+    navGroups
+      .filter(
+        (group) =>
+          (group.label === "Reports" || group.label === "Setup") &&
+          group.label !== activeGroup?.label
+      )
+      .map((group) => group.label)
+  );
+}
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
+    getInitialCollapsedGroups(pathname)
+  );
+  const activeItem = getActiveNavItem(pathname);
+  const activeGroup = getActiveGroup(pathname);
 
   const toggleGroup = (label: string) => {
     setCollapsedGroups((prev) => {
@@ -68,65 +69,69 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     });
   };
 
+  useEffect(() => {
+    setCollapsedGroups((previous) => {
+      const next = new Set(previous);
+
+      for (const label of ["Reports", "Setup"]) {
+        if (activeGroup?.label === label) {
+          next.delete(label);
+        } else {
+          next.add(label);
+        }
+      }
+
+      if (activeGroup) {
+        next.delete(activeGroup.label);
+      }
+
+      return next;
+    });
+  }, [activeGroup, pathname]);
+
   return (
     <div className="flex min-h-screen">
       <aside className="w-56 shrink-0 border-r border-border bg-muted/30 p-4">
         <p className="mb-4 text-sm font-semibold">ERP Solution</p>
-        <nav className="flex flex-col gap-1">
-          {navItems.map((item) => {
-            if (item.type === "link") {
-              const isActive = isActiveHref(pathname, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-                    isActive && "bg-muted font-medium text-foreground"
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            }
-
-            const isGroupActive = item.items.some((sub) => isActiveHref(pathname, sub.href));
-            const isCollapsed = collapsedGroups.has(item.label);
+        <nav className="flex flex-col gap-3">
+          <Link
+            href={dashboardNavItem.href}
+            aria-current={pathname === dashboardNavItem.href ? "page" : undefined}
+            className={cn(
+              "rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
+              pathname === dashboardNavItem.href && "bg-primary/10 font-medium text-primary"
+            )}
+          >
+            {dashboardNavItem.label}
+          </Link>
+          {navGroups.map((group) => {
+            const isCollapsed = collapsedGroups.has(group.label);
 
             return (
-              <div key={item.label}>
+              <div key={group.label}>
                 <button
                   type="button"
-                  onClick={() => toggleGroup(item.label)}
+                  onClick={() => toggleGroup(group.label)}
                   aria-expanded={!isCollapsed}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-                    isGroupActive && "font-medium text-foreground"
-                  )}
+                  className="w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
-                  {item.label}
-                  {isCollapsed ? (
-                    <ChevronRight className="size-4" />
-                  ) : (
-                    <ChevronDown className="size-4" />
-                  )}
+                  {group.label}
                 </button>
                 {!isCollapsed && (
-                  <div className="ml-2 flex flex-col gap-1 border-l border-border py-1 pl-2">
-                    {item.items.map((sub) => {
-                      const isActive = isActiveHref(pathname, sub.href);
+                  <div className="flex flex-col gap-1">
+                    {group.items.map((item) => {
+                      const isActive = activeItem?.href === item.href;
                       return (
                         <Link
-                          key={sub.href}
-                          href={sub.href}
+                          key={item.href}
+                          href={item.href}
                           aria-current={isActive ? "page" : undefined}
                           className={cn(
                             "rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-                            isActive && "bg-muted font-medium text-foreground"
+                            isActive && "bg-primary/10 font-medium text-primary"
                           )}
                         >
-                          {sub.label}
+                          {item.label}
                         </Link>
                       );
                     })}
@@ -144,7 +149,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           {/* Placeholder user slot — no auth wiring yet, see AGENTS.md / session notes. */}
           <span className="text-sm text-muted-foreground">Signed in as ___</span>
         </header>
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6">
+          <Breadcrumbs />
+          {children}
+        </main>
       </div>
     </div>
   );

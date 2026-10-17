@@ -393,7 +393,7 @@ async function main() {
   // ============================================================
   console.log("\n--- UI: Edit action hidden for invoice-linked entries ---");
 
-  const { html: listHtml } = await page("/accounting");
+  const { html: listHtml } = await page("/accounting/journal-entries");
   check(
     "The invoice-linked entry's row shows the 'Belongs to Invoice' note on the list page",
     listHtml.includes(`Belongs to Invoice`) && listHtml.includes(invoiceForEditTest.invoiceNumber),
@@ -424,7 +424,7 @@ async function main() {
     }),
   });
   const stillDraftVoucher = createStillDraftVoucherJson.data as { id: string; documentNumber: string };
-  const { html: listHtmlAfter } = await page("/accounting");
+  const { html: listHtmlAfter } = await page("/accounting/journal-entries");
   check(
     "A plain DRAFT voucher's row still renders an Edit link on the list page",
     appearsRendered(listHtmlAfter, "Edit") &&

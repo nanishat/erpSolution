@@ -33,7 +33,7 @@ export async function createJournalEntryAction(
 
   try {
     const entry = await createJournalEntry(parsed.data, UNASSIGNED_USER_ID);
-    revalidatePath("/accounting");
+    revalidatePath("/accounting/journal-entries");
     return { success: true, entryId: entry.id };
   } catch (error) {
     if (

@@ -133,7 +133,7 @@ export function JournalEntryForm({
           return;
         }
 
-        router.push("/accounting");
+        router.push("/accounting/journal-entries");
         router.refresh();
       });
       return;
@@ -379,7 +379,7 @@ export function JournalEntryForm({
           {isPending ? "Saving..." : mode === "create" ? "Create journal entry" : "Save changes"}
         </Button>
         {mode === "edit" && (
-          <Button type="button" variant="outline" onClick={() => router.push("/accounting")}>
+          <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
             Cancel
           </Button>
         )}

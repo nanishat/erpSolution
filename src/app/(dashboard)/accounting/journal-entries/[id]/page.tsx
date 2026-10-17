@@ -152,7 +152,7 @@ export default async function JournalEntryDetailPage({
         <AddTaxApplicationForm journalEntryId={entry.id} partners={partners} vatRates={vatRates} />
       )}
 
-      <Link href="/accounting" className="text-sm text-primary underline-offset-4 hover:underline">
+      <Link href="/accounting/journal-entries" className="text-sm text-primary underline-offset-4 hover:underline">
         ← Back to journal entries
       </Link>
     </div>
