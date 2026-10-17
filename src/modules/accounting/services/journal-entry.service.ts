@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type JournalEntryStatus, type VoucherType } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { assertAccountPostable } from "@/modules/accounting/services/account-postability.service";
@@ -208,6 +208,80 @@ export async function getJournalEntries(): Promise<JournalEntryWithLines[]> {
     orderBy: { date: "desc" },
   });
   return entries.map(serializeJournalEntry);
+}
+
+export type PaginatedJournalEntry = {
+  id: string;
+  date: Date;
+  description: string;
+  status: JournalEntryStatus;
+  voucherType: VoucherType;
+  documentNumber: string;
+  amount: number;
+};
+
+export async function getPaginatedJournalEntries({
+  page,
+  pageSize,
+  search,
+  status,
+  voucherType,
+  dateFrom,
+  dateTo,
+}: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: JournalEntryStatus;
+  voucherType?: VoucherType;
+  dateFrom?: Date;
+  dateTo?: Date;
+}): Promise<{ items: PaginatedJournalEntry[]; total: number; page: number }> {
+  const where: Prisma.JournalEntryWhereInput = {
+    ...(status && { status }),
+    ...(voucherType && { voucherType }),
+    ...(search && {
+      OR: [
+        { documentNumber: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ],
+    }),
+    ...((dateFrom || dateTo) && {
+      date: {
+        ...(dateFrom && { gte: dateFrom }),
+        ...(dateTo && {
+          lt: new Date(dateTo.getTime() + 24 * 60 * 60 * 1000),
+        }),
+      },
+    }),
+  };
+
+  const total = await db.journalEntry.count({ where });
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const entries = await db.journalEntry.findMany({
+    where,
+    select: {
+      id: true,
+      date: true,
+      description: true,
+      status: true,
+      voucherType: true,
+      documentNumber: true,
+      lines: { select: { debit: true } },
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+  });
+
+  return {
+    items: entries.map(({ lines, ...entry }) => ({
+      ...entry,
+      amount: lines.reduce((sum, line) => sum + Number(line.debit), 0),
+    })),
+    total,
+    page: currentPage,
+  };
 }
 
 export async function getJournalEntryById(

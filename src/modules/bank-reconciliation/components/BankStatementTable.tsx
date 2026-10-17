@@ -3,10 +3,8 @@ import Link from "next/link";
 import type { BankStatementListItemDTO } from "@/modules/bank-reconciliation/services/bank-reconciliation.service";
 import { BankStatementStatusBadge } from "@/modules/bank-reconciliation/components/BankStatementStatusBadge";
 
-// No client-side interaction here (no actions, no client-only hooks), so —
-// unlike JournalEntryTable — this stays a plain server-renderable component
-// and never needs "use client"; statement.openingBalance/closingBalance
-// arrive already Number(...)-serialized by listBankStatements.
+// No client-side interaction here, so this stays server-renderable; balances
+// arrive Number-serialized by listBankStatements.
 export function BankStatementTable({ statements }: { statements: BankStatementListItemDTO[] }) {
   if (statements.length === 0) {
     return <p className="text-sm text-muted-foreground">No bank statements imported yet.</p>;
