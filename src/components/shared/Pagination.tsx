@@ -23,16 +23,16 @@ export function Pagination({ page, pageSize, total, searchParams }: PaginationPr
       </p>
       {total > pageSize && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <nav aria-label="Pagination" className="flex items-center gap-3">
+          <nav aria-label="Pagination" className="flex items-center gap-2">
             {page > 1 ? (
               <Link
                 href={buildQueryString(searchParams, { page: String(page - 1) })}
-                className="text-primary underline-offset-4 hover:underline"
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-primary hover:bg-muted"
               >
                 Previous
               </Link>
             ) : (
-              <span className="text-muted-foreground">Previous</span>
+              <span className="rounded-lg border border-border px-3 py-1.5 text-muted-foreground">Previous</span>
             )}
             <span className="text-muted-foreground">
               Page {page} of {pageCount}
@@ -40,12 +40,12 @@ export function Pagination({ page, pageSize, total, searchParams }: PaginationPr
             {page < pageCount ? (
               <Link
                 href={buildQueryString(searchParams, { page: String(page + 1) })}
-                className="text-primary underline-offset-4 hover:underline"
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-primary hover:bg-muted"
               >
                 Next
               </Link>
             ) : (
-              <span className="text-muted-foreground">Next</span>
+              <span className="rounded-lg border border-border px-3 py-1.5 text-muted-foreground">Next</span>
             )}
           </nav>
           <div className="flex items-center gap-2">
@@ -60,8 +60,8 @@ export function Pagination({ page, pageSize, total, searchParams }: PaginationPr
                 aria-current={size === pageSize ? "page" : undefined}
                 className={
                   size === pageSize
-                    ? "font-semibold text-foreground"
-                    : "text-primary underline-offset-4 hover:underline"
+                    ? "rounded-lg border border-primary bg-primary px-2.5 py-1 font-semibold text-primary-foreground"
+                    : "rounded-lg border border-border bg-card px-2.5 py-1 text-foreground hover:bg-muted"
                 }
               >
                 {size}

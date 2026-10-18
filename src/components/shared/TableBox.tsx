@@ -13,21 +13,22 @@ type TableBoxProps = {
 
 export function TableBox({ title, toolbar, footer, children }: TableBoxProps) {
   return (
-    <section className="overflow-hidden rounded-lg border border-border">
-      <header className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-card">
+      <header className="flex flex-col gap-3 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold">{title}</h2>
         {toolbar && <div className="flex items-center gap-2">{toolbar}</div>}
       </header>
       <div className="overflow-x-auto">{children}</div>
-      {footer && <footer className="border-t border-border p-4">{footer}</footer>}
+      {footer && <footer className="border-t border-border p-5">{footer}</footer>}
     </section>
   );
 }
 
 export const tableHeaderClassName =
-  "border-b border-border px-3 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground";
-export const tableCellClassName = "px-3 py-2.5 text-sm";
-export const tableRowClassName = "border-t border-border hover:bg-muted/50";
+  "bg-muted/70 border-b border-border px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground";
+export const tableCellClassName = "px-4 py-3 text-sm";
+export const tableRowClassName =
+  "border-t border-border transition-colors duration-150 hover:bg-accent/60";
 
 function alignmentClassName(alignment: Alignment) {
   if (alignment === "right") return "text-right tabular-nums";

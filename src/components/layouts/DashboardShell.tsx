@@ -91,15 +91,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-56 shrink-0 border-r border-border bg-muted/30 p-4">
-        <p className="mb-4 text-sm font-semibold">ERP Solution</p>
+      <aside className="app-sidebar w-60 shrink-0 p-4 text-sidebar-foreground">
+        <div className="mb-6 border-b border-sidebar-border px-2 pb-4">
+          <p className="text-sm font-semibold tracking-wide">ERP Solution</p>
+          <p className="mt-0.5 text-xs text-sidebar-muted">Accounting</p>
+        </div>
         <nav className="flex flex-col gap-3">
           <Link
             href={dashboardNavItem.href}
             aria-current={pathname === dashboardNavItem.href ? "page" : undefined}
             className={cn(
-              "rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-              pathname === dashboardNavItem.href && "bg-primary/10 font-medium text-primary"
+              "rounded-lg px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-hover hover:text-sidebar-foreground",
+              pathname === dashboardNavItem.href && "bg-sidebar-active font-medium text-sidebar-foreground"
             )}
           >
             {dashboardNavItem.label}
@@ -113,7 +116,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   type="button"
                   onClick={() => toggleGroup(group.label)}
                   aria-expanded={!isCollapsed}
-                  className="w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground"
                 >
                   {group.label}
                 </button>
@@ -127,8 +130,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                           href={item.href}
                           aria-current={isActive ? "page" : undefined}
                           className={cn(
-                            "rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-                            isActive && "bg-primary/10 font-medium text-primary"
+                            "rounded-lg px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-hover hover:text-sidebar-foreground",
+                            isActive && "bg-sidebar-active font-medium text-sidebar-foreground"
                           )}
                         >
                           {item.label}
@@ -144,14 +147,28 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
-          <span className="text-sm font-semibold">ERP Solution</span>
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-6">
+          <span className="text-sm font-semibold">
+            {activeItem?.label ?? dashboardNavItem.label}
+          </span>
           {/* Placeholder user slot — no auth wiring yet, see AGENTS.md / session notes. */}
-          <span className="text-sm text-muted-foreground">Signed in as ___</span>
+          <div className="flex items-center gap-2.5 text-sm">
+            <span
+              aria-hidden="true"
+              className="flex size-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground"
+            >
+              U
+            </span>
+            <span className="text-muted-foreground">
+              Signed in as <span className="font-medium text-foreground">User</span>
+            </span>
+          </div>
         </header>
-        <main className="flex-1 p-6">
-          <Breadcrumbs />
-          {children}
+        <main className="flex-1 bg-background">
+          <div className="mx-auto w-full max-w-[1400px] p-6">
+            <Breadcrumbs />
+            {children}
+          </div>
         </main>
       </div>
     </div>

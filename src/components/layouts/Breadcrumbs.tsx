@@ -91,7 +91,7 @@ export function Breadcrumbs() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="mb-5 text-sm text-muted-foreground">
+    <nav aria-label="Breadcrumb" className="mb-5 text-xs text-muted-foreground">
       <ol className="flex flex-wrap items-center gap-2">
         <li>{breadcrumb.groupLabel}</li>
         <li aria-hidden="true">/</li>

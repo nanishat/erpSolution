@@ -161,7 +161,7 @@ export default async function CashFlowPage({
             </p>
           </div>
           <p
-            className={`font-semibold ${report.reconciles ? "text-foreground" : "text-destructive"}`}
+            className={`font-semibold ${report.reconciles ? "text-success-foreground" : "text-danger-foreground"}`}
             role="status"
           >
             {report.reconciles

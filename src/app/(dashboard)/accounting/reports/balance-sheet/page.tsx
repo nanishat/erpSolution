@@ -170,7 +170,7 @@ export default async function BalanceSheetPage({
             },
           ])}
           <p
-            className={`font-semibold ${report.balanced ? "text-foreground" : "text-destructive"}`}
+            className={`font-semibold ${report.balanced ? "text-success-foreground" : "text-danger-foreground"}`}
             role="status"
           >
             {report.balanced

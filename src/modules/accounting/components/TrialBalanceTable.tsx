@@ -113,8 +113,8 @@ export function TrialBalanceTable({
               className={
                 "border-t-2 font-semibold " +
                 (report.isBalanced
-                  ? "border-border"
-                  : "border-destructive bg-destructive/10 text-destructive")
+                  ? "border-success bg-success-soft text-success-foreground"
+                  : "border-danger bg-danger-soft text-danger-foreground")
               }
             >
               <td className="px-3 py-2" colSpan={3}>
