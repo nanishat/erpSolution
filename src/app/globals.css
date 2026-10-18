@@ -136,6 +136,32 @@
   }
 }
 
+@keyframes dash-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-in {
+  animation: dash-in 300ms ease-out both;
+}
+
+.dash-action {
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.dash-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgb(15 23 42 / 0.16);
+}
+
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]),
 select,
 textarea {
@@ -178,7 +204,11 @@ textarea::placeholder {
   a,
   button,
   tr,
-  .transition-colors {
+  .transition-colors,
+  .dash-in,
+  .dash-action {
     transition-duration: 0ms !important;
+    animation: none !important;
+    transform: none !important;
   }
 }

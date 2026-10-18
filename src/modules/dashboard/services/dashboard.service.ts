@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getProfitAndLoss } from "@/modules/accounting/services/profit-and-loss.service";
+import type { ProfitAndLossGroup, ProfitAndLossResult } from "@/modules/accounting/services/profit-and-loss.service";
 
 export type DashboardPeriod = "this-month" | "last-month" | "this-fy";
 
@@ -20,7 +21,7 @@ export type DashboardMonth = {
   secondary?: number;
 };
 
-export type DashboardStatusCount = {
+export type DashboardValue = {
   label: string;
   primary: number;
 };
@@ -50,6 +51,39 @@ function getDateRange(period: DashboardPeriod, now: Date): DateRange {
   };
 }
 
+function getPreviousDateRange(period: DashboardPeriod, now: Date): DateRange {
+  if (period === "this-month") {
+    const previousMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)
+    );
+    return {
+      from: previousMonth,
+      toExclusive: new Date(
+        Date.UTC(previousMonth.getUTCFullYear(), previousMonth.getUTCMonth() + 1, 1)
+      ),
+    };
+  }
+
+  if (period === "last-month") {
+    const previousMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)
+    );
+    return {
+      from: previousMonth,
+      toExclusive: new Date(
+        Date.UTC(previousMonth.getUTCFullYear(), previousMonth.getUTCMonth() + 1, 1)
+      ),
+    };
+  }
+
+  const current = getDateRange(period, now);
+  const from = new Date(current.from);
+  from.setUTCFullYear(from.getUTCFullYear() - 1);
+  const toExclusive = new Date(current.toExclusive);
+  toExclusive.setUTCFullYear(toExclusive.getUTCFullYear() - 1);
+  return { from, toExclusive };
+}
+
 function getMonthBuckets(now: Date, count: number): MonthBucket[] {
   return Array.from({ length: count }, (_, index) => {
     const monthOffset = index - count + 1;
@@ -75,11 +109,16 @@ function decimalToNumber(value: { toNumber(): number } | null | undefined): numb
   return value?.toNumber() ?? 0;
 }
 
-async function getFinancialSummary(range: DateRange, branchId?: string) {
+async function getFinancialSummary(
+  range: DateRange,
+  branchId?: string,
+  bySector = false
+) {
   return getProfitAndLoss({
     from: dateString(range.from),
     to: dateString(new Date(range.toExclusive.getTime() - 86_400_000)),
     branchId,
+    bySector,
   });
 }
 
@@ -105,7 +144,6 @@ async function getIncomeExpenseByMonth(
 }
 
 async function getInvoicedByMonth(
-  direction: "CUSTOMER" | "VENDOR",
   buckets: MonthBucket[],
   branchId?: string
 ): Promise<DashboardMonth[]> {
@@ -113,7 +151,7 @@ async function getInvoicedByMonth(
   const lastBucket = buckets[buckets.length - 1];
   const invoices = await db.invoice.findMany({
     where: {
-      direction,
+      direction: "CUSTOMER",
       status: { in: ["POSTED", "PARTIALLY_PAID", "PAID"] },
       date: { gte: firstBucket.from, lt: lastBucket.toExclusive },
       ...(branchId ? { branchId } : {}),
@@ -144,15 +182,106 @@ async function getInvoicedByMonth(
   }));
 }
 
-async function getSalesMetrics(
+async function getCollectedByMonth(
   buckets: MonthBucket[],
+  branchId?: string
+): Promise<DashboardMonth[]> {
+  const payments = await db.payment.findMany({
+    where: {
+      partner: { type: "CUSTOMER" },
+      date: { gte: buckets[0].from, lt: buckets[buckets.length - 1].toExclusive },
+      ...(branchId ? { journalEntry: { branchId } } : {}),
+    },
+    select: { date: true, amount: true },
+  });
+  const totalsByMonth = new Map(
+    buckets.map((bucket) => [
+      `${bucket.from.getUTCFullYear()}-${bucket.from.getUTCMonth()}`,
+      0,
+    ])
+  );
+
+  for (const payment of payments) {
+    const key = `${payment.date.getUTCFullYear()}-${payment.date.getUTCMonth()}`;
+    totalsByMonth.set(
+      key,
+      (totalsByMonth.get(key) ?? 0) + payment.amount.toNumber()
+    );
+  }
+
+  return buckets.map((bucket) => ({
+    label: bucket.label,
+    primary: 0,
+    secondary:
+      totalsByMonth.get(
+        `${bucket.from.getUTCFullYear()}-${bucket.from.getUTCMonth()}`
+      ) ?? 0,
+  }));
+}
+
+async function getCollectedTotal(range: DateRange, branchId?: string) {
+  const result = await db.payment.aggregate({
+    where: {
+      partner: { type: "CUSTOMER" },
+      date: { gte: range.from, lt: range.toExclusive },
+      ...(branchId ? { journalEntry: { branchId } } : {}),
+    },
+    _sum: { amount: true },
+  });
+  return decimalToNumber(result._sum.amount);
+}
+
+function getIncomeBySector(report: ProfitAndLossResult): DashboardValue[] {
+  const labels: Record<string, string> = {
+    GS: "Guard Service",
+    CC: "Cash Carrying",
+    EQ: "Equipment",
+    MS: "Miscellaneous",
+    UNASSIGNED: "Unassigned",
+  };
+  const totals = new Map<string, number>();
+  for (const [sector, amount] of Object.entries(
+    report.revenue.sectorAmounts ?? {}
+  )) {
+    const label = labels[sector] ?? "Other";
+    totals.set(label, (totals.get(label) ?? 0) + amount);
+  }
+  return [...totals]
+    .map(([label, primary]) => ({ label, primary }))
+    .sort((left, right) => right.primary - left.primary);
+}
+
+function sumNonSystemLeaves(group: ProfitAndLossGroup): number {
+  if (group.row.isSystem) return 0;
+  if (group.children.length === 0) return group.row.amount;
+  return group.children.reduce(
+    (total, child) => total + sumNonSystemLeaves(child),
+    0
+  );
+}
+
+function getTopExpenseHeads(report: ProfitAndLossResult): DashboardValue[] {
+  const heads = report.expenses.groups.flatMap((root) =>
+    root.children.length > 0 ? root.children : [root]
+  );
+  return heads
+    .filter((head) => !head.row.isSystem)
+    .map((head) => ({
+      label: head.row.name,
+      primary: sumNonSystemLeaves(head),
+    }))
+    .sort((left, right) => right.primary - left.primary)
+    .slice(0, 5);
+}
+
+async function getSalesMetrics(
   now: Date,
   branchId?: string
 ) {
   const startOfToday = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   );
-  const [receivables, overdueInvoices, invoicedByMonth] = await Promise.all([
+  const [receivables, overdueInvoices] = await Promise.all([
     db.partner.aggregate({
       where: { type: "CUSTOMER" },
       _sum: { outstandingBalance: true },
@@ -165,89 +294,42 @@ async function getSalesMetrics(
         ...(branchId ? { branchId } : {}),
       },
     }),
-    getInvoicedByMonth("CUSTOMER", buckets, branchId),
   ]);
 
   return {
     receivables: decimalToNumber(receivables._sum.outstandingBalance),
     overdueInvoices,
-    invoicedByMonth,
   };
 }
 
-async function getPurchaseMetrics(
-  buckets: MonthBucket[],
-  branchId?: string
-) {
-  const [payables, unpaidBills, billedByMonth] = await Promise.all([
-    db.partner.aggregate({
-      where: { type: "VENDOR" },
-      _sum: { payableBalance: true },
-    }),
-    db.invoice.count({
-      where: {
-        direction: "VENDOR",
-        status: { in: ["POSTED", "PARTIALLY_PAID"] },
-        ...(branchId ? { branchId } : {}),
-      },
-    }),
-    getInvoicedByMonth("VENDOR", buckets, branchId),
-  ]);
-
-  return {
-    payables: decimalToNumber(payables._sum.payableBalance),
-    unpaidBills,
-    billedByMonth,
-  };
+async function getPayables() {
+  const payables = await db.partner.aggregate({
+    where: { type: "VENDOR" },
+    _sum: { payableBalance: true },
+  });
+  return decimalToNumber(payables._sum.payableBalance);
 }
 
 async function getVoucherMetrics(
   range: DateRange,
   branchId?: string
 ) {
-  const counts = await db.journalEntry.groupBy({
-    by: ["status"],
+  const draftCount = await db.journalEntry.count({
     where: {
       date: { gte: range.from, lt: range.toExclusive },
+      status: "DRAFT",
       ...(branchId ? { branchId } : {}),
       invoice: null,
     },
-    _count: { _all: true },
   });
-  const countByStatus = new Map(
-    counts.map((item) => [item.status, item._count._all])
-  );
-
-  return {
-    draftCount: countByStatus.get("DRAFT") ?? 0,
-    statusCounts: (["DRAFT", "POSTED", "VOID"] as const).map((status) => ({
-      label: status,
-      primary: countByStatus.get(status) ?? 0,
-    })),
-  };
+  return { draftCount };
 }
 
 async function getBankingMetrics() {
-  const [unmatchedLines, counts] = await Promise.all([
-    db.bankStatementLine.count({ where: { matchStatus: "UNMATCHED" } }),
-    db.bankStatementLine.groupBy({
-      by: ["matchStatus"],
-      _count: { _all: true },
-    }),
-  ]);
-  const countByStatus = new Map(
-    counts.map((item) => [item.matchStatus, item._count._all])
-  );
-
-  return {
-    unmatchedLines,
-    statusCounts: (["UNMATCHED", "MATCHED", "IGNORED"] as const).map(
-      (status) => ({
-        label: status,
-        primary: countByStatus.get(status) ?? 0,
-      })
-    ),
-  };
+  const unmatchedLines = await db.bankStatementLine.count({
+    where: { matchStatus: "UNMATCHED" },
+  });
+  return { unmatchedLines };
 }
 
 export async function getDashboardData({
@@ -259,19 +341,30 @@ export async function getDashboardData({
 }) {
   const now = new Date();
   const range = getDateRange(period, now);
+  const previousRange = getPreviousDateRange(period, now);
   const buckets = getMonthBuckets(now, 6);
   const [
     financialSummary,
+    previousFinancialSummary,
+    sectorSummary,
     incomeExpenseByMonth,
+    invoicedByMonth,
+    collectedByMonth,
+    collected,
     sales,
-    purchases,
+    payables,
     vouchers,
     banking,
   ] = await Promise.all([
     getFinancialSummary(range, branchId),
+    getFinancialSummary(previousRange, branchId),
+    getFinancialSummary(range, branchId, true),
     getIncomeExpenseByMonth(buckets, branchId),
-    getSalesMetrics(buckets, now, branchId),
-    getPurchaseMetrics(buckets, branchId),
+    getInvoicedByMonth(buckets, branchId),
+    getCollectedByMonth(buckets, branchId),
+    getCollectedTotal(range, branchId),
+    getSalesMetrics(now, branchId),
+    getPayables(),
     getVoucherMetrics(range, branchId),
     getBankingMetrics(),
   ]);
@@ -280,9 +373,17 @@ export async function getDashboardData({
     income: financialSummary.totalRevenue,
     expense: financialSummary.totalExpense,
     net: financialSummary.netProfit,
+    previousIncome: previousFinancialSummary.totalRevenue,
+    previousExpense: previousFinancialSummary.totalExpense,
+    previousNet: previousFinancialSummary.netProfit,
+    collected,
+    incomeBySector: getIncomeBySector(sectorSummary),
+    topExpenseHeads: getTopExpenseHeads(financialSummary),
     incomeExpenseByMonth,
+    invoicedByMonth,
+    collectedByMonth,
     sales,
-    purchases,
+    payables,
     vouchers,
     banking,
   };

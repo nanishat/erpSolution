@@ -20,6 +20,7 @@ export type ProfitAndLossRow = {
   code: string;
   name: string;
   type: AccountType;
+  isSystem: boolean;
   amount: number;
   sectorAmounts?: SectorAmountMap;
 };
@@ -85,7 +86,14 @@ export async function getProfitAndLoss(
   const accounts = await db.chartOfAccount.findMany({
     where: { type: { in: ["REVENUE", "EXPENSE"] } },
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true, type: true, parentId: true },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      type: true,
+      parentId: true,
+      isSystem: true,
+    },
   });
 
   const date: Prisma.DateTimeFilter = {};
@@ -298,6 +306,7 @@ export async function getProfitAndLoss(
           code: account.code,
           name: account.name,
           type: account.type,
+          isSystem: account.isSystem,
           amount: serializeAmount(totals.balance),
           ...(sectorAmounts ? { sectorAmounts } : {}),
         },
