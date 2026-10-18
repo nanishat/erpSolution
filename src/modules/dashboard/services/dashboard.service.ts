@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getProfitAndLoss } from "@/modules/accounting/services/profit-and-loss.service";
 import type { ProfitAndLossGroup, ProfitAndLossResult } from "@/modules/accounting/services/profit-and-loss.service";
+import { getOverdueInvoiceWhere } from "@/modules/invoicing/services/invoice.service";
 
 export type DashboardPeriod = "this-month" | "last-month" | "this-fy";
 
@@ -278,9 +279,6 @@ async function getSalesMetrics(
   now: Date,
   branchId?: string
 ) {
-  const startOfToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
   const [receivables, overdueInvoices] = await Promise.all([
     db.partner.aggregate({
       where: { type: "CUSTOMER" },
@@ -289,8 +287,7 @@ async function getSalesMetrics(
     db.invoice.count({
       where: {
         direction: "CUSTOMER",
-        status: { in: ["POSTED", "PARTIALLY_PAID"] },
-        dueDate: { lt: startOfToday },
+        ...getOverdueInvoiceWhere(now),
         ...(branchId ? { branchId } : {}),
       },
     }),

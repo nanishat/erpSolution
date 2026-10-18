@@ -201,6 +201,16 @@ function roundCurrency(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 
+export function getOverdueInvoiceWhere(now: Date = new Date()): Prisma.InvoiceWhereInput {
+  const startOfToday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  return {
+    status: { in: [InvoiceStatus.POSTED, InvoiceStatus.PARTIALLY_PAID] },
+    dueDate: { lt: startOfToday },
+  };
+}
+
 const invoiceInclude = {
   branch: { select: { id: true, name: true, code: true } },
   partner: { select: { id: true, name: true, type: true } },
@@ -328,6 +338,7 @@ export async function getPaginatedInvoices({
   pageSize,
   search,
   status,
+  overdue,
   partnerId,
   dateFrom,
   dateTo,
@@ -337,13 +348,16 @@ export async function getPaginatedInvoices({
   pageSize: number;
   search?: string;
   status?: InvoiceStatus;
+  overdue?: boolean;
   partnerId?: string;
   dateFrom?: Date;
   dateTo?: Date;
 }): Promise<{ items: PaginatedInvoice[]; total: number; page: number }> {
+  const applyOverdue = overdue && (!status || status === "POSTED" || status === "PARTIALLY_PAID");
   const where: Prisma.InvoiceWhereInput = {
     direction,
     ...(status && { status }),
+    ...(applyOverdue && { AND: [getOverdueInvoiceWhere()] }),
     ...(partnerId && { partnerId }),
     ...(search && {
       OR: [

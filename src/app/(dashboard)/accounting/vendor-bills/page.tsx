@@ -32,6 +32,7 @@ type InvoiceSearchParams = ListSearchParams & {
   partnerId?: string | string[];
   dateFrom?: string | string[];
   dateTo?: string | string[];
+  overdue?: string | string[];
 };
 
 function getSingleValue(value: string | string[] | undefined) {
@@ -60,11 +61,16 @@ export default async function VendorBillsPage({
   const partnerId = getSingleValue(params.partnerId);
   const dateFrom = parseDate(getSingleValue(params.dateFrom));
   const dateTo = parseDate(getSingleValue(params.dateTo));
+  const overdueParam = getSingleValue(params.overdue) === "1";
+  const overdue =
+    overdueParam &&
+    (!status || status === "POSTED" || status === "PARTIALLY_PAID");
   const [{ items, total, page }, partners] = await Promise.all([
     getPaginatedInvoices({
       direction: "VENDOR",
       ...listParams,
       status,
+      overdue,
       partnerId,
       dateFrom,
       dateTo,
@@ -87,6 +93,7 @@ export default async function VendorBillsPage({
       <Card>
         <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <input type="hidden" name="pageSize" value={listParams.pageSize} />
+          {overdueParam && <input type="hidden" name="overdue" value="1" />}
           <label className="space-y-1 text-sm lg:col-span-2">
             <span>Search</span>
             <input
@@ -160,6 +167,20 @@ export default async function VendorBillsPage({
             </Link>
           </div>
         </form>
+        {overdueParam && (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {overdue
+              ? "Showing overdue bills only"
+              : "Overdue filter is ignored for the selected status"}
+            {" · "}
+            <Link
+              href={buildQueryString(params, { overdue: undefined })}
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              Show all
+            </Link>
+          </p>
+        )}
       </Card>
 
       <TableBox

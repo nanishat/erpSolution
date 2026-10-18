@@ -28,7 +28,7 @@ const PERIODS: { value: DashboardPeriod; label: string }[] = [
   { value: "this-fy", label: "This fiscal year (Jul–Jun)" },
 ];
 
-const OVERDUE_INVOICES_HREF = "/accounting/invoices?status=POSTED";
+const OVERDUE_INVOICES_HREF = "/accounting/invoices?overdue=1";
 
 function getSingleValue(value: string | string[] | undefined) {
   return typeof value === "string" ? value : undefined;
