@@ -1,5 +1,11 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ActiveReportFilters, ReportQuickLinks, ReportSummary } from "@/components/shared/ReportLayout";
+import { Card } from "@/components/shared/Card";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { TableBox } from "@/components/shared/TableBox";
 import { GeneralLedgerFilters } from "@/modules/accounting/components/GeneralLedgerFilters";
 import { GeneralLedgerTable } from "@/modules/accounting/components/GeneralLedgerTable";
 import { ReportExportLinks } from "@/modules/accounting/components/ReportExportLinks";
@@ -42,31 +48,78 @@ export default async function GeneralLedgerPage({
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">General Ledger</h1>
-        <p className="text-sm text-muted-foreground">
-          Account activity and running balances for reportable journal entries.
-        </p>
-      </div>
+  const activeBranch = branches.find((branch) => branch.id === params.branchId)?.name ?? "All branches";
+  const activeAccount = accounts.find((account) => account.id === params.accountId);
+  const filters = {
+    accountId: params.accountId,
+    from: params.from,
+    to: params.to,
+    branchId: params.branchId,
+  };
+  const hasActivity = (report?.sections.length ?? 0) > 0;
+  const selectedSections = params.accountId ? report?.sections ?? [] : [];
 
-      <GeneralLedgerFilters accounts={accounts} branches={branches} defaultValues={params} />
-      <ReportExportLinks
-        path="/api/reports/general-ledger"
-        filters={{
-          accountId: params.accountId,
-          from: params.from,
-          to: params.to,
-          branchId: params.branchId,
-        }}
+  return (
+    <div className="accounting-report-page space-y-5">
+      <PageHeader
+        title="General Ledger"
+        description="Account activity, debits, credits and running balances for the selected period."
+        actions={<ReportExportLinks path="/api/reports/general-ledger" filters={filters} />}
       />
+
+      <Card title="Filters" className="report-filter-card">
+        <ReportQuickLinks path="/accounting/reports/general-ledger" filters={filters} />
+        <GeneralLedgerFilters
+          accounts={accounts}
+          branches={branches}
+          defaultValues={params}
+          clearHref="/accounting/reports/general-ledger"
+        />
+        <ActiveReportFilters
+          from={params.from}
+          to={params.to}
+          branchName={`${activeBranch}${activeAccount ? ` · ${activeAccount.code} ${activeAccount.name}` : ""}`}
+        />
+      </Card>
+
       {!parsed.success && (
         <p className="text-sm text-destructive">
           {parsed.error.issues[0]?.message ?? "Invalid report filters."}
         </p>
       )}
-      {report && <GeneralLedgerTable report={report} />}
+
+      {hasActivity && selectedSections.length > 0 && (
+        <div className="space-y-3">
+          {selectedSections.map((section) => (
+            <div key={section.account.id} className="space-y-2">
+              {selectedSections.length > 1 && (
+                <h2 className="text-sm font-semibold text-muted-foreground">
+                  {section.account.code} — {section.account.name}
+                </h2>
+              )}
+              <ReportSummary
+                items={[
+                  { label: "Opening Balance", value: section.openingBalance },
+                  { label: "Total Debit", value: section.periodDebit },
+                  { label: "Total Credit", value: section.periodCredit },
+                  { label: "Closing Balance", value: section.closingBalance },
+                ]}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <TableBox title="Account activity">
+        {!parsed.success ? null : !hasActivity ? (
+          <EmptyState
+            title="No activity for the selected period"
+            action={<Link className="text-primary underline-offset-4 hover:underline" href="/accounting/reports/general-ledger">Clear filters</Link>}
+          />
+        ) : (
+          <GeneralLedgerTable report={report!} />
+        )}
+      </TableBox>
     </div>
   );
 }

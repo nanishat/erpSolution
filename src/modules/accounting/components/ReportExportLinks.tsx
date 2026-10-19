@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+
 type ReportExportLinksProps = {
   path: string;
   filters: Record<string, string | undefined>;
@@ -16,21 +18,17 @@ export function ReportExportLinks({ path, filters }: ReportExportLinksProps) {
   };
 
   return (
-    <div className="flex gap-3 text-sm">
-      <a
-        href={href("xlsx")}
-        download
-        className="text-primary underline underline-offset-4"
-      >
-        Export Excel
-      </a>
-      <a
-        href={href("pdf")}
-        download
-        className="text-primary underline underline-offset-4"
-      >
-        Export PDF
-      </a>
+    <div className="report-export-actions flex flex-wrap gap-2">
+      <Button asChild variant="outline" size="sm">
+        <a href={href("xlsx")} download>
+          Export Excel
+        </a>
+      </Button>
+      <Button asChild variant="outline" size="sm">
+        <a href={href("pdf")} download>
+          Export PDF
+        </a>
+      </Button>
     </div>
   );
 }

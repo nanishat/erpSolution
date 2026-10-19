@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import type { BranchOption } from "@/modules/core/services/branch.service";
 import type { GeneralLedgerAccountOption } from "@/modules/accounting/services/general-ledger.service";
 
@@ -6,9 +7,11 @@ export function GeneralLedgerFilters({
   accounts,
   branches,
   defaultValues,
+  clearHref,
 }: {
   accounts: GeneralLedgerAccountOption[];
   branches: BranchOption[];
+  clearHref?: string;
   defaultValues: {
     accountId?: string;
     from?: string;
@@ -19,7 +22,7 @@ export function GeneralLedgerFilters({
   return (
     <form
       method="get"
-      className="flex flex-wrap items-end gap-4 rounded-lg border border-border p-4"
+      className="flex flex-wrap items-end gap-3"
     >
       <div>
         <label className="text-sm font-medium" htmlFor="accountId">
@@ -84,6 +87,11 @@ export function GeneralLedgerFilters({
         </select>
       </div>
       <Button type="submit">Apply</Button>
+      {clearHref && (
+        <Button asChild variant="outline">
+          <Link href={clearHref}>Clear</Link>
+        </Button>
+      )}
     </form>
   );
 }

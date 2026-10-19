@@ -212,3 +212,54 @@ textarea::placeholder {
     transform: none !important;
   }
 }
+
+.report-details > summary {
+  display: flex;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.report-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-details > summary::after {
+  content: "›";
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.report-details[open] > summary::after {
+  content: "⌄";
+}
+
+@media print {
+  body:has(.accounting-report-page) {
+    background: #fff !important;
+  }
+
+  body:has(.accounting-report-page) .app-sidebar,
+  body:has(.accounting-report-page) .flex.h-14,
+  body:has(.accounting-report-page) nav[aria-label="Breadcrumb"],
+  .accounting-report-page .report-filter-card,
+  .accounting-report-page .report-export-actions,
+  .accounting-report-page .report-details-controls {
+    display: none !important;
+  }
+
+  body:has(.accounting-report-page) main,
+  body:has(.accounting-report-page) .accounting-report-page,
+  body:has(.accounting-report-page) .accounting-report-page section {
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .accounting-report-page details > :not(summary) {
+    display: block !important;
+  }
+}
