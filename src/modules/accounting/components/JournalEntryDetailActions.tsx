@@ -53,9 +53,6 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryAction
           </p>
         ) : (
           <>
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/accounting/journal-entries/${entry.id}/edit`}>Edit</Link>
-            </Button>
             <Button
               type="button"
               variant="default"
@@ -65,12 +62,15 @@ export function JournalEntryDetailActions({ entry }: { entry: JournalEntryAction
             >
               Post
             </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/accounting/journal-entries/${entry.id}/edit`}>Edit</Link>
+            </Button>
           </>
         ))}
       {entry.status === "POSTED" && !entry.reversalOfEntryId && (
         <Button
           type="button"
-          variant="outline"
+          variant="destructive"
           size="sm"
           disabled={isPending}
           onClick={() => handleReverse(entry)}

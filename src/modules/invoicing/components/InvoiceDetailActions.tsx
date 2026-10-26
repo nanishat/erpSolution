@@ -27,12 +27,23 @@ type InvoiceActionsEntry = {
  *     server-side anyway; this just saves the round trip)
  *   PAID / CANCELLED / VOID: no actions
  */
-export function InvoiceDetailActions({ entry }: { entry: InvoiceActionsEntry }) {
+export function InvoiceDetailActions({
+  entry,
+  printUrl,
+}: {
+  entry: InvoiceActionsEntry;
+  printUrl?: string;
+}) {
   const { pendingId, handlePost, handleCancel, handleReverse } = useInvoiceActions();
   const isPending = pendingId === entry.id;
+  const printAction = printUrl && (
+    <Button asChild variant="outline" size="sm">
+      <Link href={printUrl} target="_blank">Print</Link>
+    </Button>
+  );
 
   if (entry.status === "PAID" || entry.status === "CANCELLED" || entry.status === "VOID") {
-    return null;
+    return printAction ?? null;
   }
 
   return (
@@ -48,9 +59,10 @@ export function InvoiceDetailActions({ entry }: { entry: InvoiceActionsEntry }) 
           >
             Post
           </Button>
+          {printAction}
           <Button
             type="button"
-            variant="outline"
+            variant="destructive"
             size="sm"
             disabled={isPending}
             onClick={() => handleCancel(entry)}
@@ -64,9 +76,10 @@ export function InvoiceDetailActions({ entry }: { entry: InvoiceActionsEntry }) 
           <Button asChild variant="default" size="sm">
             <Link href={`${entry.basePath}/${entry.id}/payments/new`}>Record Payment</Link>
           </Button>
+          {printAction}
           <Button
             type="button"
-            variant="outline"
+            variant="destructive"
             size="sm"
             disabled={isPending || entry.amountPaid > 0}
             title={entry.amountPaid > 0 ? "Cannot reverse an invoice with payments recorded" : undefined}

@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { Amount } from "@/components/shared/Amount";
+import { Card } from "@/components/shared/Card";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { TableBox, Td, Th } from "@/components/shared/TableBox";
 import { getJournalEntryById } from "@/modules/accounting/services/journal-entry.service";
 import { JournalEntryTaxApplications } from "@/modules/accounting/components/JournalEntryTaxApplications";
 import { InvoiceDetailActions } from "@/modules/invoicing/components/InvoiceDetailActions";
-import { InvoiceStatusBadge } from "@/modules/invoicing/components/InvoiceStatusBadge";
 import { PaymentHistoryTable } from "@/modules/invoicing/components/PaymentHistoryTable";
 import { getInvoiceById } from "@/modules/invoicing/services/invoice.service";
 import { listPartners } from "@/modules/partners/services/partner.service";
@@ -28,138 +33,165 @@ export default async function VendorBillDetailPage({
   }
 
   const journalEntry = await getJournalEntryById(invoice.journalEntryId);
-
-  // Tax can only be attached before the bill's JournalEntry is posted — same
-  // gate as the Customer Invoice detail page / JournalEntryDetailPage.
   const [partners, vatRates] =
     invoice.journalEntry.status === "DRAFT"
       ? await Promise.all([listPartners({ isActive: true }), listTaxRates({ type: "VAT" })])
       : [[], []];
-
   const remaining = invoice.grandTotal - invoice.amountPaid;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="font-mono text-xl font-semibold">{invoice.invoiceNumber}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <InvoiceStatusBadge status={invoice.status} />
-            <span className="text-sm text-muted-foreground">{invoice.partner.name}</span>
-          </div>
-        </div>
-        <InvoiceDetailActions
-          entry={{
-            id: invoice.id,
-            invoiceNumber: invoice.invoiceNumber,
-            status: invoice.status,
-            amountPaid: invoice.amountPaid,
-            basePath: BASE_PATH,
-          }}
-        />
-      </div>
+      <PageHeader
+        title={
+          <>
+            <span className="font-mono">{invoice.invoiceNumber}</span>
+            <StatusBadge status={invoice.status} />
+          </>
+        }
+        description={`Vendor Bill · ${invoice.date.toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })}`}
+        actions={
+          <InvoiceDetailActions
+            entry={{
+              id: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              status: invoice.status,
+              amountPaid: invoice.amountPaid,
+              basePath: BASE_PATH,
+            }}
+          />
+        }
+      />
 
-      {invoice.status === "VOID" && invoice.journalEntry.reversedByEntry && (
-        <div className="rounded-md bg-muted px-3 py-2 text-sm">
-          Reversed by{" "}
-          <Link
-            href={`/accounting/journal-entries/${invoice.journalEntry.reversedByEntry.id}`}
-            className="font-mono text-primary underline-offset-4 hover:underline"
-          >
-            {invoice.journalEntry.reversedByEntry.documentNumber}
-          </Link>
-        </div>
-      )}
-
-      <div className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <div className="text-xs text-muted-foreground">Date</div>
-          <div className="text-sm">{invoice.date.toLocaleDateString()}</div>
-        </div>
-        <div>
-          <div className="text-xs text-muted-foreground">Due date</div>
-          <div className="text-sm">{invoice.dueDate ? invoice.dueDate.toLocaleDateString() : "—"}</div>
-        </div>
-        <div>
-          <div className="text-xs text-muted-foreground">Branch</div>
-          <div className="text-sm">
-            {invoice.branch.name}
+      <Card title="Bill details">
+        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <dt className="text-xs text-muted-foreground">Date</dt>
+            <dd className="text-sm">{invoice.date.toLocaleDateString()}</dd>
           </div>
-        </div>
-        {invoice.notes && (
-          <div className="sm:col-span-2 lg:col-span-4">
-            <div className="text-xs text-muted-foreground">Notes</div>
-            <div className="text-sm">{invoice.notes}</div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Due date</dt>
+            <dd className="text-sm">{invoice.dueDate?.toLocaleDateString() ?? "—"}</dd>
           </div>
-        )}
-      </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Vendor</dt>
+            <dd className="text-sm">
+              <Link href={`/accounting/partners/${invoice.partner.id}/edit`} className="text-primary underline-offset-4 hover:underline">
+                {invoice.partner.name}
+              </Link>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Branch</dt>
+            <dd className="text-sm">{invoice.branch.name}</dd>
+          </div>
+          {invoice.notes && (
+            <div className="sm:col-span-2 lg:col-span-3">
+              <dt className="text-xs text-muted-foreground">Reference / description</dt>
+              <dd className="text-sm">{invoice.notes}</dd>
+            </div>
+          )}
+        </dl>
+      </Card>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted text-left text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Description</th>
-              <th className="px-3 py-2 text-right">Qty</th>
-              <th className="px-3 py-2 text-right">Unit price</th>
-              <th className="px-3 py-2 text-right">Line total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoice.lines.map((line) => (
-              <tr key={line.id} className="border-t border-border">
-                <td className="px-3 py-2">{line.description}</td>
-                <td className="px-3 py-2 text-right">{line.quantity.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">{line.unitPrice.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">{line.lineTotal.toFixed(2)}</td>
+      <TableBox title="Items">
+        {invoice.lines.length === 0 ? (
+          <EmptyState title="No bill items" />
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr>
+                <Th>Description</Th>
+                <Th alignment="right">Qty</Th>
+                <Th alignment="right">Unit price</Th>
+                <Th alignment="right">Line total</Th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {invoice.lines.map((line) => (
+                <tr key={line.id} className="border-t border-border">
+                  <Td>{line.description}</Td>
+                  <Td alignment="right">{line.quantity.toFixed(2)}</Td>
+                  <Td alignment="right"><Amount value={line.unitPrice} className="text-foreground" /></Td>
+                  <Td alignment="right"><Amount value={line.lineTotal} className="text-foreground" /></Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </TableBox>
 
-      <div className="ml-auto w-full max-w-xs space-y-1 rounded-lg border border-border p-4 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Subtotal</span>
-          <span>{invoice.subtotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Tax</span>
-          <span>{invoice.taxTotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between border-t border-border pt-1 font-medium">
-          <span>Grand total</span>
-          <span>{invoice.grandTotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Paid</span>
-          <span>{invoice.amountPaid.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between font-medium">
-          <span>Remaining</span>
-          <span>{remaining.toFixed(2)}</span>
-        </div>
-      </div>
+      <Card title="Totals" className="ml-auto w-full max-w-sm">
+        <dl className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Subtotal</dt>
+            <dd><Amount value={invoice.subtotal} className="text-foreground" /></dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">VAT</dt>
+            <dd><Amount value={invoice.taxTotal} className="text-foreground" /></dd>
+          </div>
+          <div className="flex justify-between border-t border-border pt-2 font-medium">
+            <dt>Total</dt>
+            <dd><Amount value={invoice.grandTotal} className="text-foreground" /></dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">Paid</dt>
+            <dd><Amount value={invoice.amountPaid} className="text-foreground" /></dd>
+          </div>
+          <div className="flex justify-between font-medium">
+            <dt>Balance Due</dt>
+            <dd><Amount value={remaining} className="text-foreground" /></dd>
+          </div>
+        </dl>
+      </Card>
 
-      {journalEntry && (
+      {journalEntry && journalEntry.taxApplications.length > 0 && (
         <JournalEntryTaxApplications
           taxApplications={journalEntry.taxApplications}
           isDraft={invoice.journalEntry.status === "DRAFT"}
         />
       )}
-
       {invoice.journalEntry.status === "DRAFT" && (
-        <AddTaxApplicationForm
-          journalEntryId={invoice.journalEntryId}
-          partners={partners}
-          vatRates={vatRates}
-          invoiceLinked
-        />
+        <Card title="Add Tax Application">
+          <AddTaxApplicationForm
+            journalEntryId={invoice.journalEntryId}
+            partners={partners}
+            vatRates={vatRates}
+            invoiceLinked
+          />
+        </Card>
       )}
 
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium">Payments</h2>
-        <PaymentHistoryTable payments={invoice.payments} />
-      </div>
+      {invoice.payments.length > 0 && <PaymentHistoryTable payments={invoice.payments} />}
+
+      <Card title="Related Records">
+        <ul className="space-y-2 text-sm">
+          <li>
+            Vendor:{" "}
+            <Link href={`/accounting/partners/${invoice.partner.id}/edit`} className="text-primary underline-offset-4 hover:underline">
+              {invoice.partner.name}
+            </Link>
+          </li>
+          <li>
+            Journal entry:{" "}
+            <Link href={`/accounting/journal-entries/${invoice.journalEntry.id}`} className="font-mono text-primary underline-offset-4 hover:underline">
+              {invoice.journalEntry.documentNumber}
+            </Link>
+          </li>
+          {invoice.journalEntry.reversedByEntry && (
+            <li>
+              Reversed by:{" "}
+              <Link href={`/accounting/journal-entries/${invoice.journalEntry.reversedByEntry.id}`} className="font-mono text-primary underline-offset-4 hover:underline">
+                {invoice.journalEntry.reversedByEntry.documentNumber}
+              </Link>
+            </li>
+          )}
+        </ul>
+      </Card>
 
       <Link href={BASE_PATH} className="text-sm text-primary underline-offset-4 hover:underline">
         ← Back to vendor bills

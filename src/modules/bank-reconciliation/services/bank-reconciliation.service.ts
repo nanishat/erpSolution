@@ -1,4 +1,4 @@
-import type { BankStatementStatus, Prisma } from "@prisma/client";
+import type { BankStatementLineMatchStatus, BankStatementStatus, Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type {
@@ -323,6 +323,67 @@ export async function getBankStatementById(id: string): Promise<BankStatementDTO
     include: bankStatementInclude,
   });
   return statement ? serializeStatement(statement) : null;
+}
+
+export async function getBankStatementDetailPage({
+  id,
+  page,
+  pageSize,
+  status,
+}: {
+  id: string;
+  page: number;
+  pageSize: number;
+  status?: BankStatementLineMatchStatus;
+}): Promise<{
+  statement: Omit<BankStatementDTO, "lines"> | null;
+  lines: BankStatementLineDTO[];
+  total: number;
+  page: number;
+}> {
+  const statementQuery = db.bankStatement.findUnique({
+    where: { id },
+    include: { account: { select: { code: true, name: true } } },
+  });
+  const where = { bankStatementId: id, ...(status && { matchStatus: status }) };
+  const [statement, total] = await Promise.all([
+    statementQuery,
+    db.bankStatementLine.count({ where }),
+  ]);
+
+  if (!statement) {
+    return { statement: null, lines: [], total, page: 1 };
+  }
+
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+  const lines = await db.bankStatementLine.findMany({
+    where,
+    orderBy: { date: "asc" },
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
+    include: matchedJournalLineInclude,
+  });
+
+  return {
+    statement: {
+      id: statement.id,
+      accountId: statement.accountId,
+      accountCode: statement.account.code,
+      accountName: statement.account.name,
+      periodStart: statement.periodStart,
+      periodEnd: statement.periodEnd,
+      openingBalance: Number(statement.openingBalance),
+      closingBalance: Number(statement.closingBalance),
+      status: statement.status,
+      importedById: statement.importedById,
+      importedAt: statement.importedAt,
+      createdAt: statement.createdAt,
+      updatedAt: statement.updatedAt,
+    },
+    lines: lines.map(serializeLine),
+    total,
+    page: currentPage,
+  };
 }
 
 export type BankStatementListItemDTO = {

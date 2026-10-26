@@ -1,5 +1,7 @@
 import type { JournalEntryWithLines } from "@/modules/accounting/services/journal-entry.service";
+import { Amount } from "@/components/shared/Amount";
 import { RemoveTaxApplicationButton } from "@/modules/tax/components/RemoveTaxApplicationButton";
+import { TableBox, Td, Th } from "@/components/shared/TableBox";
 
 export function JournalEntryTaxApplications({
   taxApplications,
@@ -13,45 +15,42 @@ export function JournalEntryTaxApplications({
   }
 
   return (
-    <div className="space-y-2">
-      <h2 className="text-sm font-medium">Tax</h2>
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted text-left text-muted-foreground">
+    <TableBox title="Tax Applications">
+        <table className="w-full">
+          <thead>
             <tr>
-              <th className="px-3 py-2">Type</th>
-              <th className="px-3 py-2">Direction</th>
-              <th className="px-3 py-2">Partner</th>
-              <th className="px-3 py-2 text-right">Rate %</th>
-              <th className="px-3 py-2 text-right">Base amount</th>
-              <th className="px-3 py-2 text-right">Tax amount</th>
-              {isDraft && <th className="px-3 py-2" />}
+              <Th>Type</Th>
+              <Th>Direction</Th>
+              <Th>Partner</Th>
+              <Th alignment="right">Rate %</Th>
+              <Th alignment="right">Base amount</Th>
+              <Th alignment="right">Tax amount</Th>
+              {isDraft && <Th />}
             </tr>
           </thead>
           <tbody>
             {taxApplications.map((app) => (
               <tr key={app.id} className="border-t border-border">
-                <td className="px-3 py-2">
+                <Td>
                   {app.taxType}
                   {app.sourceTaxRate && (
                     <div className="text-xs text-muted-foreground">{app.sourceTaxRate.name}</div>
                   )}
-                </td>
-                <td className="px-3 py-2">{app.direction ?? "—"}</td>
-                <td className="px-3 py-2">{app.partner?.name ?? "—"}</td>
-                <td className="px-3 py-2 text-right">{Number(app.ratePercent).toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">{Number(app.baseAmount).toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">{Number(app.taxAmount).toFixed(2)}</td>
+                </Td>
+                <Td>{app.direction ?? "—"}</Td>
+                <Td>{app.partner?.name ?? "—"}</Td>
+                <Td alignment="right">{Number(app.ratePercent).toFixed(2)}</Td>
+                <Td alignment="right"><Amount value={Number(app.baseAmount)} /></Td>
+                <Td alignment="right"><Amount value={Number(app.taxAmount)} /></Td>
                 {isDraft && (
-                  <td className="px-3 py-2 text-right">
+                  <Td alignment="right">
                     <RemoveTaxApplicationButton id={app.id} />
-                  </td>
+                  </Td>
                 )}
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
+    </TableBox>
   );
 }

@@ -1,4 +1,6 @@
 import type { InvoiceWithLines } from "@/modules/invoicing/services/invoice.service";
+import { Amount } from "@/components/shared/Amount";
+import { TableBox, Td, Th } from "@/components/shared/TableBox";
 
 export function PaymentHistoryTable({ payments }: { payments: InvoiceWithLines["payments"] }) {
   if (payments.length === 0) {
@@ -6,27 +8,27 @@ export function PaymentHistoryTable({ payments }: { payments: InvoiceWithLines["
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm">
-        <thead className="bg-muted text-left text-muted-foreground">
+    <TableBox title="Payment History">
+      <table className="w-full">
+        <thead>
           <tr>
-            <th className="px-3 py-2">Date</th>
-            <th className="px-3 py-2">Method</th>
-            <th className="px-3 py-2">Reference</th>
-            <th className="px-3 py-2 text-right">Amount</th>
+            <Th>Date</Th>
+            <Th>Method</Th>
+            <Th>Reference</Th>
+            <Th alignment="right">Amount</Th>
           </tr>
         </thead>
         <tbody>
           {payments.map((payment) => (
             <tr key={payment.id} className="border-t border-border">
-              <td className="px-3 py-2">{payment.date.toLocaleDateString()}</td>
-              <td className="px-3 py-2">{payment.method ?? "—"}</td>
-              <td className="px-3 py-2">{payment.reference ?? "—"}</td>
-              <td className="px-3 py-2 text-right">{payment.amount.toFixed(2)}</td>
+              <Td>{payment.date.toLocaleDateString()}</Td>
+              <Td>{payment.method ?? "—"}</Td>
+              <Td>{payment.reference ?? "—"}</Td>
+              <Td alignment="right"><Amount value={payment.amount} /></Td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </TableBox>
   );
 }
