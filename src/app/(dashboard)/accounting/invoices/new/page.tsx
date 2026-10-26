@@ -14,12 +14,6 @@ export default async function NewCustomerInvoicePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">New customer invoice</h1>
-        <p className="text-sm text-muted-foreground">
-          Tax isn&apos;t calculated here — attach it from the invoice detail page after creating it.
-        </p>
-      </div>
       <InvoiceForm
         direction="CUSTOMER"
         partners={partners}

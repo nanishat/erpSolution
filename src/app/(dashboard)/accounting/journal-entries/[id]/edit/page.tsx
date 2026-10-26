@@ -62,11 +62,6 @@ export default async function EditJournalEntryPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Edit journal entry</h1>
-        <p className="text-sm text-muted-foreground">{entry.documentNumber}</p>
-      </div>
-
       <JournalEntryForm mode="edit" entry={entry} accounts={accounts} branches={branches} />
     </div>
   );

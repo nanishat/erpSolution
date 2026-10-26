@@ -4,10 +4,17 @@ import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { AccountPicker } from "@/components/shared/AccountPicker";
+import { Amount } from "@/components/shared/Amount";
+import { Card } from "@/components/shared/Card";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { toPaisa } from "@/components/shared/BalanceSummary";
+import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { BranchOption } from "@/modules/core/services/branch.service";
 import type { OpenInvoiceOption } from "@/modules/payments/services/payment.service";
 import { recordPaymentSchema } from "@/modules/payments/validations/payment.schema";
+import Link from "next/link";
 
 type PartnerOption = { id: string; name: string; type: "CUSTOMER" | "VENDOR" };
 
@@ -52,28 +59,44 @@ export function RecordPaymentForm({
   const [openInvoices, setOpenInvoices] = useState<OpenInvoiceOption[]>([]);
   const [isLoadingInvoices, setIsLoadingInvoices] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, string>>({});
+  const [initialValues] = useState(
+    () => JSON.stringify({ partnerId, amount, date, branchId, cashBankAccountId, method, reference, allocations })
+  );
+  const isDirty =
+    JSON.stringify({ partnerId, amount, date, branchId, cashBankAccountId, method, reference, allocations }) !==
+    initialValues;
+  const { markSubmitted } = useUnsavedChangesWarning(isDirty);
 
   const selectedPartner = partners.find((p) => p.id === partnerId) ?? null;
+  const partnerListHref =
+    selectedPartner?.type === "VENDOR" ? "/accounting/vendor-bills" : "/accounting/invoices";
 
   useEffect(() => {
-    setAllocations({});
     if (!partnerId) {
-      setOpenInvoices([]);
       return;
     }
-    setIsLoadingInvoices(true);
     fetch(`/api/partners/${partnerId}/open-invoices`)
       .then((res) => res.json())
       .then((json) => setOpenInvoices(json.data ?? []))
       .finally(() => setIsLoadingInvoices(false));
   }, [partnerId]);
 
-  const totalAllocated = Object.values(allocations).reduce((sum, value) => {
+  const handlePartnerChange = (nextPartnerId: string) => {
+    setPartnerId(nextPartnerId);
+    setAllocations({});
+    setOpenInvoices([]);
+    setIsLoadingInvoices(Boolean(nextPartnerId));
+  };
+
+  const totalAllocatedPaisa = Object.values(allocations).reduce((sum, value) => {
     const parsed = Number(value);
-    return sum + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+    return sum + (Number.isFinite(parsed) && parsed > 0 ? toPaisa(parsed) : 0);
   }, 0);
   const numericAmount = Number(amount) || 0;
-  const leftover = Math.round((numericAmount - totalAllocated) * 100) / 100;
+  const enteredPaisa = toPaisa(numericAmount);
+  const leftoverPaisa = enteredPaisa - totalAllocatedPaisa;
+  const totalAllocated = totalAllocatedPaisa / 100;
+  const leftover = leftoverPaisa / 100;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -113,61 +136,63 @@ export function RecordPaymentForm({
         return;
       }
 
-      router.push(selectedPartner?.type === "VENDOR" ? "/accounting/vendor-bills" : "/accounting/invoices");
+      markSubmitted();
+      router.push(partnerListHref);
       router.refresh();
     });
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-border p-4">
-      {cashBankAccounts.length === 0 && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          No active Cash or Bank account exists in the Chart of Accounts.
-        </p>
+    <div className="space-y-6">
+      <PageHeader title="Record Payment" description="Apply a payment to a partner's open invoices or bills; unused funds become partner credit." />
+      <form onSubmit={onSubmit} className="space-y-6">
+      {formError && (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {formError}
+        </div>
       )}
-
+      <Card title="Basic Details">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="text-sm font-medium" htmlFor="partnerId">
-            Partner
-          </label>
-          <select
-            id="partnerId"
-            value={partnerId}
-            onChange={(e) => setPartnerId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="" disabled>
-              Select partner
-            </option>
-            {partners.map((partner) => (
-              <option key={partner.id} value={partner.id}>
-                {`${partner.name} (${partner.type === "CUSTOMER" ? "Customer" : "Vendor"})`}
-              </option>
-            ))}
-          </select>
+          <label className="text-sm font-medium" htmlFor="partnerId">Partner *</label>
+          {partners.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No partners available. <Link className="underline" href="/accounting/partners">Create one</Link>.
+            </p>
+          ) : (
+            <select
+              id="partnerId"
+              value={partnerId}
+              onChange={(e) => handlePartnerChange(e.target.value)}
+              className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="" disabled>Select partner</option>
+              {partners.map((partner) => (
+                <option key={partner.id} value={partner.id}>
+                  {`${partner.name} (${partner.type === "CUSTOMER" ? "Customer" : "Vendor"})`}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div>
-          <label className="text-sm font-medium" htmlFor="amount">
-            Total amount
-          </label>
+          <label className="text-sm font-medium" htmlFor="amount">Total amount *</label>
           <input
             id="amount"
             type="number"
+            inputMode="decimal"
             step="0.01"
             min="0"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums"
           />
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="text-sm font-medium" htmlFor="date">
-            Date
-          </label>
+          <label className="text-sm font-medium" htmlFor="date">Date *</label>
           <input
             id="date"
             type="date"
@@ -177,9 +202,7 @@ export function RecordPaymentForm({
           />
         </div>
         <div>
-          <label className="text-sm font-medium" htmlFor="branchId">
-            Branch
-          </label>
+          <label className="text-sm font-medium" htmlFor="branchId">Branch *</label>
           <select
             id="branchId"
             value={branchId}
@@ -197,32 +220,25 @@ export function RecordPaymentForm({
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium" htmlFor="cashBankAccountId">
-            Cash / Bank account
-          </label>
-          <select
-            id="cashBankAccountId"
-            value={cashBankAccountId}
-            onChange={(e) => setCashBankAccountId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="" disabled>
-              Select account
-            </option>
-            {cashBankAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} — {account.name}
-              </option>
-            ))}
-          </select>
+          <label className="text-sm font-medium" htmlFor="cashBankAccountId">Cash / Bank account *</label>
+          {cashBankAccounts.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No active Cash or Bank account. <Link className="underline" href="/accounting/chart-of-accounts">Create one</Link>.
+            </p>
+          ) : (
+            <AccountPicker
+              id="cashBankAccountId"
+              options={cashBankAccounts}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+            />
+          )}
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="text-sm font-medium" htmlFor="method">
-            Method
-          </label>
+          <label className="text-sm font-medium" htmlFor="method">Method</label>
           <input
             id="method"
             type="text"
@@ -233,9 +249,7 @@ export function RecordPaymentForm({
           />
         </div>
         <div>
-          <label className="text-sm font-medium" htmlFor="reference">
-            Reference
-          </label>
+          <label className="text-sm font-medium" htmlFor="reference">Reference</label>
           <input
             id="reference"
             type="text"
@@ -246,9 +260,10 @@ export function RecordPaymentForm({
           />
         </div>
       </div>
+      </Card>
 
       {partnerId && (
-        <div>
+        <Card title="Items">
           <p className="mb-2 text-sm font-medium">
             {selectedPartner?.type === "VENDOR" ? "Open bills" : "Open invoices"}
           </p>
@@ -275,6 +290,7 @@ export function RecordPaymentForm({
                     <td className="py-1.5 pr-2">
                       <input
                         type="number"
+                        inputMode="decimal"
                         step="0.01"
                         min="0"
                         max={invoice.remainingBalance}
@@ -282,7 +298,8 @@ export function RecordPaymentForm({
                         onChange={(e) =>
                           setAllocations((prev) => ({ ...prev, [invoice.id]: e.target.value }))
                         }
-                        className="w-28 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                        aria-label={`Amount to apply to ${invoice.invoiceNumber}`}
+                        className="w-28 rounded-md border border-input bg-background px-2 py-1 text-right text-sm tabular-nums"
                       />
                     </td>
                   </tr>
@@ -290,35 +307,34 @@ export function RecordPaymentForm({
               </tbody>
             </table>
           )}
-        </div>
+        </Card>
       )}
 
-      <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+      <Card title="Summary" className="sm:max-w-md sm:ml-auto">
         <p>
-          Allocated: {totalAllocated.toFixed(2)} / Entered: {numericAmount.toFixed(2)}
+          Allocated: <Amount value={totalAllocated} /> / Entered: <Amount value={numericAmount} />
         </p>
         {leftover > 0 && (
           <p className="text-muted-foreground">
-            Leftover of {leftover.toFixed(2)} will be recorded as partner credit.
+            Leftover of <Amount value={leftover} /> will be recorded as partner credit.
           </p>
         )}
         {leftover < 0 && (
           <p className="text-destructive">
-            Allocations exceed the entered amount by {Math.abs(leftover).toFixed(2)}.
+            Allocations exceed the entered amount by <Amount value={Math.abs(leftover)} />.
           </p>
         )}
-      </div>
+      </Card>
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
-
-      <div className="flex gap-2">
+      <div className="flex items-center gap-4 border-t border-border pt-4">
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : "Record payment"}
+          {isPending ? "Saving..." : "Save Payment"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
+        <Link href={partnerListHref} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
           Cancel
-        </Button>
+        </Link>
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import type { VoucherType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { AccountPicker } from "@/components/shared/AccountPicker";
+import { BalanceSummary, toPaisa } from "@/components/shared/BalanceSummary";
+import { Card } from "@/components/shared/Card";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import {
   CREDIT_VOUCHER_SECTOR_CODES,
   CREDIT_VOUCHER_SECTOR_LABELS,
@@ -13,6 +18,7 @@ import {
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
 import type { BranchOption } from "@/modules/core/services/branch.service";
+import Link from "next/link";
 
 type Direction = "in" | "out";
 
@@ -54,9 +60,17 @@ export function CashBankVoucherForm({
   const [sector, setSector] = useState<CreditVoucherSector | "">("");
   const [amount, setAmount] = useState("");
   const [chosenDirection, setChosenDirection] = useState<Direction>("in");
+  const [initialValues] = useState(
+    () => JSON.stringify({ date, description, branchId, cashBankAccountId, otherAccountId, sector, amount, chosenDirection })
+  );
+  const isDirty =
+    JSON.stringify({ date, description, branchId, cashBankAccountId, otherAccountId, sector, amount, chosenDirection }) !==
+    initialValues;
+  const { markSubmitted } = useUnsavedChangesWarning(isDirty);
 
   const effectiveDirection = direction === "user-choice" ? chosenDirection : direction;
   const otherAccounts = accounts.filter((a) => a.id !== cashBankAccountId);
+  const amountPaisa = toPaisa(Number(amount) || 0);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -123,23 +137,33 @@ export function CashBankVoucherForm({
         return;
       }
 
+      markSubmitted();
       router.push("/accounting/journal-entries");
       router.refresh();
     });
   };
 
-  return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-border p-4">
-      {cashBankAccounts.length === 0 && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          No active Cash or Bank account exists in the Chart of Accounts.
-        </p>
-      )}
+  const title =
+    voucherType === "CASH_VOUCHER"
+      ? "New Cash Voucher"
+      : voucherType === "CREDIT_VOUCHER"
+        ? "New Credit Voucher"
+        : "New Debit Voucher";
 
+  return (
+    <div className="space-y-6">
+      <PageHeader title={title} description="Record a Cash or Bank transaction and its matching account." />
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {formError}
+          </div>
+        )}
+      <Card title="Basic Details">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="date">
-            Date
+            Date *
           </label>
           <input
             id="date"
@@ -151,7 +175,7 @@ export function CashBankVoucherForm({
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="branchId">
-            Branch
+            Branch *
           </label>
           <select
             id="branchId"
@@ -171,46 +195,57 @@ export function CashBankVoucherForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {voucherType === "CREDIT_VOUCHER" && (
         <div>
-          <label className="text-sm font-medium" htmlFor="cashBankAccountId">
-            Cash / Bank Account
-          </label>
+          <label className="text-sm font-medium" htmlFor="sector">Sector</label>
           <select
-            id="cashBankAccountId"
-            value={cashBankAccountId}
-            onChange={(e) => setCashBankAccountId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            id="sector"
+            value={sector}
+            onChange={(event) =>
+              setSector(CREDIT_VOUCHER_SECTOR_CODES.find((code) => code === event.target.value) ?? "")
+            }
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm sm:max-w-md"
           >
-            <option value="" disabled>
-              Select account
-            </option>
-            {cashBankAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} — {account.name}
-              </option>
+            <option value="">No sector</option>
+            {CREDIT_VOUCHER_SECTOR_CODES.map((code) => (
+              <option key={code} value={code}>{CREDIT_VOUCHER_SECTOR_LABELS[code]}</option>
             ))}
           </select>
         </div>
+      )}
+      </Card>
+
+      <Card title="Entries">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="text-sm font-medium" htmlFor="otherAccountId">
-            {otherAccountLabel}
-          </label>
-          <select
-            id="otherAccountId"
-            value={otherAccountId}
-            onChange={(e) => setOtherAccountId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="" disabled>
-              Select account
-            </option>
-            {otherAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} — {account.name}
-              </option>
-            ))}
-          </select>
+          <label className="text-sm font-medium" htmlFor="cashBankAccountId">Cash / Bank Account *</label>
+          {cashBankAccounts.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No active Cash or Bank account. <Link className="underline" href="/accounting/chart-of-accounts">Create one</Link>.
+            </p>
+          ) : (
+            <AccountPicker
+              id="cashBankAccountId"
+              options={cashBankAccounts}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+            />
+          )}
+        </div>
+        <div>
+          <label className="text-sm font-medium" htmlFor="otherAccountId">{otherAccountLabel} *</label>
+          {otherAccounts.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No other accounts available. <Link className="underline" href="/accounting/chart-of-accounts">Create one</Link>.
+            </p>
+          ) : (
+            <AccountPicker
+              id="otherAccountId"
+              options={otherAccounts}
+              value={otherAccountId}
+              onChange={setOtherAccountId}
+            />
+          )}
         </div>
       </div>
 
@@ -242,67 +277,44 @@ export function CashBankVoucherForm({
 
       <div>
         <label className="text-sm font-medium" htmlFor="amount">
-          Amount
+          Amount *
         </label>
         <input
           id="amount"
           type="number"
+          inputMode="decimal"
           step="0.01"
           min="0"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums sm:max-w-md"
         />
       </div>
+      <BalanceSummary debitPaisa={amountPaisa} creditPaisa={amountPaisa} />
+      </Card>
 
-      <div>
-        <label className="text-sm font-medium" htmlFor="description">
-          Description
-        </label>
-        <input
-          id="description"
-          type="text"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-        />
-      </div>
-
-      {voucherType === "CREDIT_VOUCHER" && (
+      <Card title="Notes">
         <div>
-          <label className="text-sm font-medium" htmlFor="sector">
-            Sector
-          </label>
-          <select
-            id="sector"
-            value={sector}
-            onChange={(event) =>
-              setSector(
-                CREDIT_VOUCHER_SECTOR_CODES.find((code) => code === event.target.value) ?? ""
-              )
-            }
+          <label className="text-sm font-medium" htmlFor="description">Description *</label>
+          <input
+            id="description"
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="">No sector</option>
-            {CREDIT_VOUCHER_SECTOR_CODES.map((code) => (
-              <option key={code} value={code}>
-                {code} — {CREDIT_VOUCHER_SECTOR_LABELS[code]}
-              </option>
-            ))}
-          </select>
+          />
         </div>
-      )}
+      </Card>
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
-
-      <div className="flex gap-2">
+      <div className="flex items-center gap-4 border-t border-border pt-4">
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : "Create journal entry"}
+          {isPending ? "Saving..." : "Save as Draft"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
+        <Link href="/accounting/journal-entries" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
           Cancel
-        </Button>
+        </Link>
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

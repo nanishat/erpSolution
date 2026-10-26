@@ -39,17 +39,13 @@ export default async function RecordVendorBillPaymentPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Record payment</h1>
-        <p className="text-sm text-muted-foreground">
-          Against bill {invoice.invoiceNumber} — {invoice.partner.name}
-        </p>
-      </div>
       <RecordPaymentForm
         invoiceId={invoice.id}
         remaining={remaining}
         accounts={accounts}
         detailHref={detailHref}
+        cancelHref="/accounting/vendor-bills"
+        description={`Record a payment against bill ${invoice.invoiceNumber} for ${invoice.partner.name}.`}
       />
     </div>
   );

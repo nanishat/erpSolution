@@ -4,8 +4,14 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { AccountPicker } from "@/components/shared/AccountPicker";
+import { Amount } from "@/components/shared/Amount";
+import { Card } from "@/components/shared/Card";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import { recordPaymentForInvoiceSchema } from "@/modules/payments/validations/payment.schema";
+import Link from "next/link";
 
 /**
  * Records a payment against one POSTED/PARTIALLY_PAID invoice — built now
@@ -24,11 +30,15 @@ export function RecordPaymentForm({
   remaining,
   accounts,
   detailHref,
+  cancelHref,
+  description,
 }: {
   invoiceId: string;
   remaining: number;
   accounts: ChartOfAccountOption[];
   detailHref: string;
+  cancelHref: string;
+  description?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -43,6 +53,12 @@ export function RecordPaymentForm({
   const [cashBankAccountId, setCashBankAccountId] = useState(
     cashBankAccounts.length === 1 ? cashBankAccounts[0].id : ""
   );
+  const [initialValues] = useState(
+    () => JSON.stringify({ amount, date, method, reference, cashBankAccountId })
+  );
+  const isDirty =
+    JSON.stringify({ amount, date, method, reference, cashBankAccountId }) !== initialValues;
+  const { markSubmitted } = useUnsavedChangesWarning(isDirty);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -75,38 +91,42 @@ export function RecordPaymentForm({
         return;
       }
 
+      markSubmitted();
       router.push(detailHref);
       router.refresh();
     });
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-border p-4">
-      {cashBankAccounts.length === 0 && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          No active Cash or Bank account exists in the Chart of Accounts.
-        </p>
+    <div className="space-y-6">
+      <PageHeader title="Record Payment" description={description ?? "Record a payment against this invoice or bill."} />
+      <form onSubmit={onSubmit} className="space-y-6">
+      {formError && (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {formError}
+        </div>
       )}
-
+      <Card title="Basic Details">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="amount">
-            Amount (remaining: {remaining.toFixed(2)})
+            Amount * <span className="font-normal text-muted-foreground">(remaining: <Amount value={remaining} />)</span>
           </label>
           <input
             id="amount"
             type="number"
+            inputMode="decimal"
             step="0.01"
             min="0"
             max={remaining}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums"
           />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="date">
-            Date
+            Date *
           </label>
           <input
             id="date"
@@ -117,27 +137,24 @@ export function RecordPaymentForm({
           />
         </div>
       </div>
+      </Card>
 
+      <Card title="Payment Details">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="text-sm font-medium" htmlFor="cashBankAccountId">
-            Cash / Bank account
-          </label>
-          <select
-            id="cashBankAccountId"
-            value={cashBankAccountId}
-            onChange={(e) => setCashBankAccountId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="" disabled>
-              Select account
-            </option>
-            {cashBankAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} — {account.name}
-              </option>
-            ))}
-          </select>
+          <label className="text-sm font-medium" htmlFor="cashBankAccountId">Cash / Bank account *</label>
+          {cashBankAccounts.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No active Cash or Bank account. <Link className="underline" href="/accounting/chart-of-accounts">Create one</Link>.
+            </p>
+          ) : (
+            <AccountPicker
+              id="cashBankAccountId"
+              options={cashBankAccounts}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+            />
+          )}
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="method">
@@ -167,17 +184,17 @@ export function RecordPaymentForm({
           className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
         />
       </div>
+      </Card>
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
-
-      <div className="flex gap-2">
+      <div className="flex items-center gap-4 border-t border-border pt-4">
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : "Record payment"}
+          {isPending ? "Saving..." : "Save Payment"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push(detailHref)}>
+        <Link href={cancelHref} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
           Cancel
-        </Button>
+        </Link>
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { VoucherType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/PageHeader";
 import {
   USER_CREATABLE_VOUCHER_TYPES,
   VOUCHER_TYPE_DESCRIPTIONS,
@@ -30,14 +31,14 @@ export function JournalEntryTypePicker({
   if (!selected) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">Which voucher type is this?</p>
+        <PageHeader title="New Voucher" description="Choose the voucher type that matches this transaction." />
         <div className="grid gap-3 sm:grid-cols-2">
           {VOUCHER_TYPES.map((voucherType) => (
             <button
               key={voucherType}
               type="button"
               onClick={() => setSelected(voucherType)}
-              className="rounded-lg border border-border p-4 text-left hover:border-primary hover:bg-muted"
+              className="rounded-xl border border-border bg-card p-4 text-left shadow-card hover:border-primary hover:bg-muted"
             >
               <div className="font-medium">{VOUCHER_TYPE_LABELS[voucherType]}</div>
               <div className="mt-1 text-xs text-muted-foreground">
@@ -52,8 +53,7 @@ export function JournalEntryTypePicker({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{VOUCHER_TYPE_LABELS[selected]}</h2>
+      <div className="flex justify-end">
         <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(null)}>
           Change voucher type
         </Button>

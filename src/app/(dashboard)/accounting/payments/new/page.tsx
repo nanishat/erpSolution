@@ -14,13 +14,6 @@ export default async function NewGeneralPaymentPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Record payment</h1>
-        <p className="text-sm text-muted-foreground">
-          Settle one or more of a partner&apos;s open invoices/bills with a single payment. Any
-          leftover amount is recorded as partner credit.
-        </p>
-      </div>
       <RecordPaymentForm partners={partners} accounts={accounts} branches={branches} />
     </div>
   );

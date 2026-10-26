@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { AccountPicker } from "@/components/shared/AccountPicker";
+import { BalanceSummary, toPaisa } from "@/components/shared/BalanceSummary";
+import { Card } from "@/components/shared/Card";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { BranchOption } from "@/modules/core/services/branch.service";
+import Link from "next/link";
 
 const MAX_LINES = 5;
 
@@ -49,9 +55,17 @@ export function DebitVoucherForm({
     cashBankAccounts.length === 1 ? cashBankAccounts[0].id : ""
   );
   const [lines, setLines] = useState<LineState[]>([emptyLine()]);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [initialValues] = useState(
+    () => JSON.stringify({ date, branchId, description, cashBankAccountId, lines })
+  );
+  const isDirty =
+    JSON.stringify({ date, branchId, description, cashBankAccountId, lines }) !== initialValues;
+  const { markSubmitted } = useUnsavedChangesWarning(isDirty);
 
   const isBankAccount = cashBankAccounts.find((a) => a.id === cashBankAccountId)?.subType === "BANK";
   const lineAccounts = accounts.filter((a) => a.id !== cashBankAccountId);
+  const totalPaisa = lines.reduce((sum, line) => sum + toPaisa(Number(line.amount) || 0), 0);
 
   const selectCashBankAccount = (id: string) => {
     setCashBankAccountId(id);
@@ -71,6 +85,30 @@ export function DebitVoucherForm({
 
   const removeLine = (index: number) => {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const handleGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter") return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.hasAttribute("data-line-cell")) return;
+    const cells = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-line-cell]"));
+    const cellIndex = cells.indexOf(target);
+    if (cellIndex < 0) return;
+
+    event.preventDefault();
+    if (cellIndex < cells.length - 1) {
+      cells[cellIndex + 1].focus();
+      return;
+    }
+
+    if (lines.length >= MAX_LINES) return;
+    const nextRowIndex = lines.length;
+    addLine();
+    requestAnimationFrame(() => {
+      gridRef.current
+        ?.querySelector<HTMLElement>(`[data-line-row="${nextRowIndex}"] [data-line-cell]`)
+        ?.focus();
+    });
   };
 
   const canSubmit =
@@ -143,23 +181,26 @@ export function DebitVoucherForm({
         return;
       }
 
+      markSubmitted();
       router.push("/accounting/journal-entries");
       router.refresh();
     });
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-lg border border-border p-4">
-      {cashBankAccounts.length === 0 && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          No active Cash or Bank account exists in the Chart of Accounts.
-        </p>
+    <div className="space-y-6">
+      <PageHeader title="New Debit Voucher" description="Record expenses or payments against a Cash or Bank account." />
+      <form onSubmit={onSubmit} className="space-y-6">
+      {formError && (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {formError}
+        </div>
       )}
-
+      <Card title="Basic Details">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="date">
-            Date
+            Date *
           </label>
           <input
             id="date"
@@ -171,7 +212,7 @@ export function DebitVoucherForm({
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="branchId">
-            Branch
+            Branch *
           </label>
           <select
             id="branchId"
@@ -192,73 +233,85 @@ export function DebitVoucherForm({
       </div>
 
       <div>
-        <label className="text-sm font-medium" htmlFor="cashBankAccountId">
-          Cash / Bank Account
-        </label>
-        <select
-          id="cashBankAccountId"
-          value={cashBankAccountId}
-          onChange={(e) => selectCashBankAccount(e.target.value)}
-          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-        >
-          <option value="" disabled>
-            Select account
-          </option>
-          {cashBankAccounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.code} — {account.name}
-            </option>
-          ))}
-        </select>
+        <label className="text-sm font-medium" htmlFor="cashBankAccountId">Cash / Bank Account *</label>
+        {cashBankAccounts.length === 0 ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            No active Cash or Bank account. <Link className="underline" href="/accounting/chart-of-accounts">Create one</Link>.
+          </p>
+        ) : (
+          <AccountPicker
+            id="cashBankAccountId"
+            options={cashBankAccounts}
+            value={cashBankAccountId}
+            onChange={selectCashBankAccount}
+          />
+        )}
       </div>
+      </Card>
 
-      <div className="space-y-3">
+      <Card title="Entries">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Add each expense or payable as a separate entry.</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addLine}
+          disabled={lines.length >= MAX_LINES}
+        >
+          Add another line
+        </Button>
+      </div>
+      <div className="space-y-3" ref={gridRef} onKeyDown={handleGridKeyDown}>
         {lines.map((line, index) => (
-          <div key={index} className="space-y-2 rounded-md border border-border p-3">
+          <div key={index} data-line-row={index} className="space-y-2 rounded-md border border-border p-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Line {index + 1}</span>
+              <h3 className="text-sm font-medium">Entry {index + 1}</h3>
               {lines.length > 1 && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => removeLine(index)}>
+                <Button type="button" variant="ghost" size="sm" aria-label={`Remove entry ${index + 1}`} onClick={() => removeLine(index)}>
                   Remove
                 </Button>
               )}
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <label className="text-sm font-medium">Expense / Payable Account</label>
-                <select
-                  value={line.expenseAccountId}
-                  onChange={(e) => updateLine(index, { expenseAccountId: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                >
-                  <option value="" disabled>
-                    Select account
-                  </option>
-                  {lineAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.code} — {account.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="text-sm font-medium" htmlFor={`expenseAccount-${index}`}>Expense / Payable Account *</label>
+                {lineAccounts.length === 0 ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No other accounts available. <Link className="underline" href="/accounting/chart-of-accounts">Create one</Link>.
+                  </p>
+                ) : (
+                  <AccountPicker
+                    id={`expenseAccount-${index}`}
+                    options={lineAccounts}
+                    value={line.expenseAccountId}
+                    onChange={(expenseAccountId) => updateLine(index, { expenseAccountId })}
+                  />
+                )}
               </div>
               <div>
-                <label className="text-sm font-medium">Amount</label>
+                <label className="text-sm font-medium" htmlFor={`amount-${index}`}>Amount *</label>
                 <input
+                  id={`amount-${index}`}
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0"
                   value={line.amount}
                   onChange={(e) => updateLine(index, { amount: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums"
+                  data-line-cell
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Description</label>
+                <label className="text-sm font-medium" htmlFor={`lineDescription-${index}`}>Description</label>
                 <input
+                  id={`lineDescription-${index}`}
                   type="text"
                   value={line.description}
                   onChange={(e) => updateLine(index, { description: e.target.value })}
                   className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  data-line-cell
                 />
               </div>
             </div>
@@ -266,30 +319,36 @@ export function DebitVoucherForm({
             {isBankAccount && (
               <div className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
                 <div>
-                  <label className="text-sm font-medium">Drawn On (Bank Name)</label>
+                  <label className="text-sm font-medium" htmlFor={`bankName-${index}`}>Drawn On (Bank Name) *</label>
                   <input
+                    id={`bankName-${index}`}
                     type="text"
                     value={line.bankName}
                     onChange={(e) => updateLine(index, { bankName: e.target.value })}
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    data-line-cell
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Cash/Cheque No</label>
+                  <label className="text-sm font-medium" htmlFor={`chequeNo-${index}`}>Cash/Cheque No *</label>
                   <input
+                    id={`chequeNo-${index}`}
                     type="text"
                     value={line.chequeNo}
                     onChange={(e) => updateLine(index, { chequeNo: e.target.value })}
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    data-line-cell
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Dated</label>
+                  <label className="text-sm font-medium" htmlFor={`chequeDate-${index}`}>Dated *</label>
                   <input
+                    id={`chequeDate-${index}`}
                     type="date"
                     value={line.chequeDate}
                     onChange={(e) => updateLine(index, { chequeDate: e.target.value })}
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    data-line-cell
                   />
                 </div>
               </div>
@@ -297,40 +356,31 @@ export function DebitVoucherForm({
           </div>
         ))}
       </div>
+      <BalanceSummary debitPaisa={totalPaisa} creditPaisa={totalPaisa} />
+      </Card>
 
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={addLine}
-        disabled={lines.length >= MAX_LINES}
-      >
-        Add another line
-      </Button>
+      <Card title="Notes">
+        <div>
+          <label className="text-sm font-medium" htmlFor="description">Voucher Description *</label>
+          <input
+            id="description"
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          />
+        </div>
+      </Card>
 
-      <div>
-        <label className="text-sm font-medium" htmlFor="description">
-          Voucher Description
-        </label>
-        <input
-          id="description"
-          type="text"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-        />
-      </div>
-
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
-
-      <div className="flex gap-2">
+      <div className="flex items-center gap-4 border-t border-border pt-4">
         <Button type="submit" disabled={isPending || !canSubmit}>
-          {isPending ? "Saving..." : "Create journal entry"}
+          {isPending ? "Saving..." : "Save as Draft"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push("/accounting/journal-entries")}>
+        <Link href="/accounting/journal-entries" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
           Cancel
-        </Button>
+        </Link>
       </div>
-    </form>
+      </form>
+    </div>
   );
 }
