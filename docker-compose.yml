@@ -1,14 +1,14 @@
 version: '3.8'
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     restart: always
     environment:
       POSTGRES_USER: dev_user
       POSTGRES_PASSWORD: dev_password
       POSTGRES_DB: dev_db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
