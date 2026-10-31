@@ -4,7 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/shared/FieldError";
+import { focusFirstFieldError } from "@/components/shared/form-validation";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
+import { importBankStatementSchema } from "@/modules/bank-reconciliation/validations/bank-reconciliation.schema";
 
 type Step = "form" | "mapping" | "preview";
 
@@ -75,6 +79,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { fieldErrors, setFieldErrors, showIssues, clearEditedField } = useFieldErrors("CSV row");
   const [step, setStep] = useState<Step>("form");
 
   const [accountId, setAccountId] = useState(accounts.length === 1 ? accounts[0].id : "");
@@ -123,12 +128,28 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
 
   function handleParse() {
     setError(null);
-    if (!accountId || !periodStart || !periodEnd || !openingBalance || !closingBalance) {
-      setError("Please fill in account, period, and opening/closing balance.");
+    if (!accountId) {
+      showIssues([{ path: ["accountId"], message: "Select an account." }]);
+      return;
+    }
+    if (!periodStart) {
+      showIssues([{ path: ["periodStart"], message: "Enter a valid period start date." }]);
+      return;
+    }
+    if (!periodEnd) {
+      showIssues([{ path: ["periodEnd"], message: "Enter a valid period end date." }]);
+      return;
+    }
+    if (!openingBalance) {
+      showIssues([{ path: ["openingBalance"], message: "Enter an opening balance." }]);
+      return;
+    }
+    if (!closingBalance) {
+      showIssues([{ path: ["closingBalance"], message: "Enter a closing balance." }]);
       return;
     }
     if (!file) {
-      setError("Please choose a CSV file to upload.");
+      showIssues([{ path: ["file"], message: "Choose a CSV file to upload." }]);
       return;
     }
 
@@ -170,19 +191,19 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
   function handleApplyMapping() {
     setError(null);
     if (!mapping.date || !mapping.description) {
-      setError("Date and description columns are required.");
+      showIssues([{ path: [!mapping.date ? "mapDate" : "mapDescription"], message: "Select a column." }]);
       return;
     }
     if (mapping.amountMode === "amount" && !mapping.amount) {
-      setError("An amount column is required.");
+      showIssues([{ path: ["mapAmount"], message: "Select an amount column." }]);
       return;
     }
     if (mapping.amountMode === "debitCredit" && !mapping.debit && !mapping.credit) {
-      setError("At least one of debit/credit column is required.");
+      showIssues([{ path: ["mapDebit"], message: "Select a debit or credit column." }]);
       return;
     }
     if (dateFormatRequired && !mapping.dateFormat) {
-      setError("Choose a date format to continue.");
+      showIssues([{ path: ["mapDateFormat"], message: "Choose a date format to continue." }]);
       return;
     }
 
@@ -215,6 +236,34 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
 
   function handleSubmit() {
     setError(null);
+    const parsed = importBankStatementSchema.safeParse({
+      accountId,
+      periodStart,
+      periodEnd,
+      openingBalance,
+      closingBalance,
+      lines: previewLines.map((line) => ({
+        date: line.date,
+        description: line.description,
+        amount: line.amount,
+        referenceNo: line.referenceNo,
+      })),
+    });
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((issue) =>
+        issue.path[0] === "lines" && typeof issue.path[1] === "number"
+          ? { ...issue, path: ["file"], message: `CSV row ${issue.path[1] + 1}: ${issue.message}` }
+          : issue
+      );
+      setStep("form");
+      showIssues(issues);
+      requestAnimationFrame(() =>
+        focusFirstFieldError(
+          Object.fromEntries(issues.map((issue) => [issue.path.map(String).join("."), issue.message]))
+        )
+      );
+      return;
+    }
     startTransition(async () => {
       const { ok, json } = await parseCsv(false, appliedMapping ?? undefined);
 
@@ -229,7 +278,12 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-border p-4">
+    <div className="space-y-4 rounded-lg border border-border p-4" onChange={clearEditedField}>
+      {error && (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
       {accounts.length === 0 && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
           No active, reconcilable account exists in the Chart of Accounts.
@@ -241,10 +295,11 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium" htmlFor="accountId">
-                Bank account
+                Bank account *
               </label>
               <select
                 id="accountId"
+                name="accountId"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -258,6 +313,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                   </option>
                 ))}
               </select>
+              <FieldError message={fieldErrors.accountId} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor="file">
@@ -265,11 +321,13 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               </label>
               <input
                 id="file"
+                name="file"
                 type="file"
                 accept=".csv,text/csv"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               />
+              <FieldError message={fieldErrors.file} />
             </div>
           </div>
 
@@ -279,6 +337,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
             </label>
             <select
               id="mapDateFormat"
+              name="mapDateFormat"
               value={mapping.dateFormat}
               onChange={(e) =>
                 setMapping((prev) => ({ ...prev, dateFormat: e.target.value as DateFormat | "" }))
@@ -290,65 +349,72 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               <option value="DMY">DMY (DD/MM/YYYY)</option>
               <option value="MDY">MDY (MM/DD/YYYY)</option>
             </select>
+            <FieldError message={fieldErrors.mapDateFormat} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium" htmlFor="periodStart">
-                Period start
+                Period start *
               </label>
               <input
                 id="periodStart"
+                name="periodStart"
                 type="date"
                 value={periodStart}
                 onChange={(e) => setPeriodStart(e.target.value)}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               />
+              <FieldError message={fieldErrors.periodStart} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor="periodEnd">
-                Period end
+                Period end *
               </label>
               <input
                 id="periodEnd"
+                name="periodEnd"
                 type="date"
                 value={periodEnd}
                 onChange={(e) => setPeriodEnd(e.target.value)}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               />
+              <FieldError message={fieldErrors.periodEnd} />
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium" htmlFor="openingBalance">
-                Opening balance
+                Opening balance *
               </label>
               <input
                 id="openingBalance"
+                name="openingBalance"
                 type="number"
                 step="0.01"
                 value={openingBalance}
                 onChange={(e) => setOpeningBalance(e.target.value)}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               />
+              <FieldError message={fieldErrors.openingBalance} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor="closingBalance">
-                Closing balance
+                Closing balance *
               </label>
               <input
                 id="closingBalance"
+                name="closingBalance"
                 type="number"
                 step="0.01"
                 value={closingBalance}
                 onChange={(e) => setClosingBalance(e.target.value)}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               />
+              <FieldError message={fieldErrors.closingBalance} />
             </div>
           </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button type="button" disabled={isPending} onClick={handleParse}>
             {isPending ? "Parsing..." : "Parse CSV"}
@@ -363,6 +429,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               ? "Date values are ambiguous. Choose a date format below."
               : "The CSV's columns couldn't be auto-detected. Map each field to a column below."}
           </p>
+          <p className="text-xs text-muted-foreground">Match each statement field to the column that contains its values.</p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -371,6 +438,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               </label>
               <select
                 id="mapDate"
+                name="mapDate"
                 value={mapping.date}
                 onChange={(e) => setMapping((prev) => ({ ...prev, date: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -384,6 +452,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                   </option>
                 ))}
               </select>
+              <FieldError message={fieldErrors.mapDate} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor="mapDescription">
@@ -391,6 +460,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               </label>
               <select
                 id="mapDescription"
+                name="mapDescription"
                 value={mapping.description}
                 onChange={(e) => setMapping((prev) => ({ ...prev, description: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -404,6 +474,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                   </option>
                 ))}
               </select>
+              <FieldError message={fieldErrors.mapDescription} />
             </div>
           </div>
 
@@ -436,6 +507,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               </label>
               <select
                 id="mapAmount"
+                name="mapAmount"
                 value={mapping.amount}
                 onChange={(e) => setMapping((prev) => ({ ...prev, amount: e.target.value }))}
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -449,6 +521,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                   </option>
                 ))}
               </select>
+              <FieldError message={fieldErrors.mapAmount} />
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -458,6 +531,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                 </label>
                 <select
                   id="mapDebit"
+                  name="mapDebit"
                   value={mapping.debit}
                   onChange={(e) => setMapping((prev) => ({ ...prev, debit: e.target.value }))}
                   className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -469,6 +543,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                     </option>
                   ))}
                 </select>
+                <FieldError message={fieldErrors.mapDebit} />
               </div>
               <div>
                 <label className="text-sm font-medium" htmlFor="mapCredit">
@@ -476,6 +551,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                 </label>
                 <select
                   id="mapCredit"
+                  name="mapCredit"
                   value={mapping.credit}
                   onChange={(e) => setMapping((prev) => ({ ...prev, credit: e.target.value }))}
                   className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -487,6 +563,7 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
                     </option>
                   ))}
                 </select>
+                <FieldError message={fieldErrors.mapCredit} />
               </div>
             </div>
           )}
@@ -537,8 +614,6 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
             </div>
           )}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
           <div className="flex gap-2">
             <Button type="button" disabled={isPending} onClick={handleApplyMapping}>
               {isPending ? "Parsing..." : "Apply mapping"}
@@ -584,8 +659,6 @@ export function ImportBankStatementForm({ accounts }: { accounts: ChartOfAccount
               <p>{`Opening (${numericOpening.toFixed(2)}) + ${previewLines.length} line(s) totaling ${linesSum.toFixed(2)} = ${expectedClosing.toFixed(2)}, which does not match the stated closing balance (${numericClosing.toFixed(2)}). Discrepancy: ${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(2)}. Adjust the closing balance or fix the CSV before importing.`}</p>
             )}
           </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <div className="flex gap-2">
             <Button type="button" disabled={isPending || !balances} onClick={handleSubmit}>

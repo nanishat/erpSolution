@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { TaxComputationType, TaxDirection, TaxType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/shared/FieldError";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import type { Partner } from "@/modules/partners/services/partner.service";
 import type { TaxRate } from "@/modules/tax/services/tax-rate.service";
 import { createTaxApplicationSchema } from "@/modules/tax/validations/tax-application.schema";
@@ -53,13 +55,13 @@ export function AddTaxApplicationForm({
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, setFieldErrors, showIssues, clearEditedField } = useFieldErrors();
 
   const {
     register,
     handleSubmit,
     watch,
     reset,
-    setError,
     formState: { errors },
   } = useForm<AddTaxApplicationFormValues>({ defaultValues: emptyValues });
 
@@ -70,6 +72,7 @@ export function AddTaxApplicationForm({
   const closeForm = () => {
     setIsOpen(false);
     setFormError(null);
+    setFieldErrors({});
     reset(emptyValues);
   };
 
@@ -100,13 +103,7 @@ export function AddTaxApplicationForm({
     const parsed = createTaxApplicationSchema.safeParse(payload);
 
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (typeof field === "string" && field in emptyValues) {
-          setError(field as keyof AddTaxApplicationFormValues, { message: issue.message });
-        }
-      }
-      setFormError(parsed.error.issues[0]?.message ?? "Please fix the errors below.");
+      showIssues(parsed.error.issues);
       return;
     }
 
@@ -144,12 +141,13 @@ export function AddTaxApplicationForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
+      onChange={clearEditedField}
       className="space-y-4 rounded-lg border border-border p-4"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="taxType">
-            Tax type
+            Tax type *
           </label>
           <select
             id="taxType"
@@ -167,9 +165,7 @@ export function AddTaxApplicationForm({
                 </option>
               ))}
           </select>
-          {errors.taxType && (
-            <p className="mt-1 text-xs text-destructive">{errors.taxType.message}</p>
-          )}
+          <FieldError message={fieldErrors.taxType ?? errors.taxType?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="partnerId">
@@ -192,7 +188,7 @@ export function AddTaxApplicationForm({
 
       <div>
         <label className="text-sm font-medium" htmlFor="baseAmount">
-          Base amount
+          Base amount *
         </label>
         <input
           id="baseAmount"
@@ -202,16 +198,14 @@ export function AddTaxApplicationForm({
           className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
           {...register("baseAmount")}
         />
-        {errors.baseAmount && (
-          <p className="mt-1 text-xs text-destructive">{errors.baseAmount.message}</p>
-        )}
+        <FieldError message={fieldErrors.baseAmount ?? errors.baseAmount?.message} />
       </div>
 
       {taxType === "VAT" && (
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="text-sm font-medium" htmlFor="direction">
-              Direction
+              Direction *
             </label>
             <select
               id="direction"
@@ -227,13 +221,11 @@ export function AddTaxApplicationForm({
                 </option>
               ))}
             </select>
-            {errors.direction && (
-              <p className="mt-1 text-xs text-destructive">{errors.direction.message}</p>
-            )}
+            <FieldError message={fieldErrors.direction ?? errors.direction?.message} />
           </div>
           <div>
             <label className="text-sm font-medium" htmlFor="sourceTaxRateId">
-              VAT rate
+              VAT rate *
             </label>
             <select
               id="sourceTaxRateId"
@@ -250,9 +242,7 @@ export function AddTaxApplicationForm({
                 </option>
               ))}
             </select>
-            {errors.sourceTaxRateId && (
-              <p className="mt-1 text-xs text-destructive">{errors.sourceTaxRateId.message}</p>
-            )}
+            <FieldError message={fieldErrors.sourceTaxRateId ?? errors.sourceTaxRateId?.message} />
           </div>
         </div>
       )}
@@ -261,7 +251,7 @@ export function AddTaxApplicationForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="text-sm font-medium" htmlFor="ratePercent">
-              Rate % (0–15, fractional allowed)
+              Rate % *
             </label>
             <input
               id="ratePercent"
@@ -272,9 +262,8 @@ export function AddTaxApplicationForm({
               className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               {...register("ratePercent")}
             />
-            {errors.ratePercent && (
-              <p className="mt-1 text-xs text-destructive">{errors.ratePercent.message}</p>
-            )}
+            <FieldError message={fieldErrors.ratePercent ?? errors.ratePercent?.message} />
+            <p className="mt-1 text-xs text-muted-foreground">TDS/VDS rates must be between 0 and 15; decimals are allowed.</p>
           </div>
           <div>
             <label className="text-sm font-medium" htmlFor="computationType">
@@ -296,7 +285,7 @@ export function AddTaxApplicationForm({
         </div>
       )}
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
+      {formError && <div role="alert" className="text-sm text-destructive">{formError}</div>}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={isPending || !taxType}>

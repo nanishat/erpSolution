@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { ProductServiceType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/shared/FieldError";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { ProductServiceWithAccounts } from "@/modules/products/services/product-service.service";
 import {
@@ -37,6 +39,7 @@ export function ProductServiceForm({
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, showIssues, clearEditedField } = useFieldErrors();
 
   const {
     register,
@@ -86,13 +89,7 @@ export function ProductServiceForm({
     const parsed = schema.safeParse(payload);
 
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (typeof field === "string" && field in values) {
-          setError(field as keyof ProductServiceFormValues, { message: issue.message });
-        }
-      }
-      setFormError(parsed.error.issues[0]?.message ?? "Please fix the errors below.");
+      showIssues(parsed.error.issues);
       return;
     }
 
@@ -125,12 +122,13 @@ export function ProductServiceForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
+      onChange={clearEditedField}
       className="space-y-4 rounded-lg border border-border p-4"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="code">
-            Code
+            Code{mode === "create" ? " *" : ""}
           </label>
           <input
             id="code"
@@ -138,11 +136,11 @@ export function ProductServiceForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("code")}
           />
-          {errors.code && <p className="mt-1 text-xs text-destructive">{errors.code.message}</p>}
+          <FieldError message={fieldErrors.code ?? errors.code?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="name">
-            Name
+            Name{mode === "create" ? " *" : ""}
           </label>
           <input
             id="name"
@@ -150,7 +148,7 @@ export function ProductServiceForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("name")}
           />
-          {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>}
+          <FieldError message={fieldErrors.name ?? errors.name?.message} />
         </div>
       </div>
 
@@ -169,7 +167,7 @@ export function ProductServiceForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="type">
-            Type
+            Type{mode === "create" ? " *" : ""}
           </label>
           <select
             id="type"
@@ -185,7 +183,7 @@ export function ProductServiceForm({
               </option>
             ))}
           </select>
-          {errors.type && <p className="mt-1 text-xs text-destructive">{errors.type.message}</p>}
+          <FieldError message={fieldErrors.type ?? errors.type?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="unit">
@@ -213,15 +211,13 @@ export function ProductServiceForm({
           className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
           {...register("unitPrice")}
         />
-        {errors.unitPrice && (
-          <p className="mt-1 text-xs text-destructive">{errors.unitPrice.message}</p>
-        )}
+        <FieldError message={fieldErrors.unitPrice ?? errors.unitPrice?.message} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="incomeAccountId">
-            Income account
+            Income account{mode === "create" ? " *" : ""}
           </label>
           <select
             id="incomeAccountId"
@@ -237,9 +233,7 @@ export function ProductServiceForm({
               </option>
             ))}
           </select>
-          {errors.incomeAccountId && (
-            <p className="mt-1 text-xs text-destructive">{errors.incomeAccountId.message}</p>
-          )}
+          <FieldError message={fieldErrors.incomeAccountId ?? errors.incomeAccountId?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="expenseAccountId">
@@ -257,9 +251,7 @@ export function ProductServiceForm({
               </option>
             ))}
           </select>
-          {errors.expenseAccountId && (
-            <p className="mt-1 text-xs text-destructive">{errors.expenseAccountId.message}</p>
-          )}
+          <FieldError message={fieldErrors.expenseAccountId ?? errors.expenseAccountId?.message} />
         </div>
       </div>
 
@@ -270,7 +262,7 @@ export function ProductServiceForm({
         </label>
       )}
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
+      {formError && <div role="alert" className="text-sm text-destructive">{formError}</div>}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={isPending}>

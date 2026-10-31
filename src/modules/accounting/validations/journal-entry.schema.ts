@@ -4,10 +4,10 @@ import { z } from "zod";
 import { CREDIT_VOUCHER_SECTOR_CODES } from "@/modules/accounting/constants/sector";
 
 export const journalLineSchema = z.object({
-  accountId: z.string().min(1, "Account is required"),
-  branchId: z.string().min(1, "Branch is required"),
-  debit: z.coerce.number().min(0, "Debit cannot be negative").default(0),
-  credit: z.coerce.number().min(0, "Credit cannot be negative").default(0),
+  accountId: z.string({ error: "Select an account." }).min(1, "Select an account."),
+  branchId: z.string({ error: "Select a branch." }).min(1, "Select a branch."),
+  debit: z.coerce.number({ error: "Enter a debit amount." }).min(0, "Debit must be 0 or more.").default(0),
+  credit: z.coerce.number({ error: "Enter a credit amount." }).min(0, "Credit must be 0 or more.").default(0),
   memo: z.string().optional(),
 });
 
@@ -21,14 +21,14 @@ function validateBalancedLines(entry: LinesEntry, ctx: z.RefinementCtx) {
     if (line.debit > 0 && line.credit > 0) {
       ctx.addIssue({
         code: "custom",
-        message: "A line item cannot have both a debit and a credit amount",
+        message: "Enter a debit or credit amount, not both.",
         path: ["lines", index],
       });
     }
     if (line.debit === 0 && line.credit === 0) {
       ctx.addIssue({
         code: "custom",
-        message: "A line item needs a debit or a credit amount",
+        message: "Enter a debit or credit amount.",
         path: ["lines", index],
       });
     }
@@ -40,7 +40,7 @@ function validateBalancedLines(entry: LinesEntry, ctx: z.RefinementCtx) {
   if (Math.round((totalDebit - totalCredit) * 100) !== 0) {
     ctx.addIssue({
       code: "custom",
-      message: `Debits (${totalDebit}) must equal credits (${totalCredit})`,
+      message: "Total debit and total credit must be equal.",
       path: ["lines"],
     });
   }
@@ -48,15 +48,15 @@ function validateBalancedLines(entry: LinesEntry, ctx: z.RefinementCtx) {
 
 export const journalEntrySchema = z
   .object({
-    date: z.coerce.date(),
-    description: z.string().min(1, "Description is required"),
+    date: z.coerce.date({ error: "Enter a valid date." }),
+    description: z.string({ error: "Enter a description." }).min(1, "Enter a description."),
     reference: z.string().optional(),
-    branchId: z.string().min(1, "Branch is required"),
-    voucherType: z.nativeEnum(VoucherType),
+    branchId: z.string({ error: "Select a branch." }).min(1, "Select a branch."),
+    voucherType: z.nativeEnum(VoucherType, { error: "Select a voucher type." }),
     sector: z.enum(CREDIT_VOUCHER_SECTOR_CODES).nullable().optional(),
     lines: z
       .array(journalLineSchema)
-      .min(2, "A journal entry needs at least two line items"),
+      .min(2, "Add at least two entries."),
   })
   .superRefine((entry, ctx) => {
     validateBalancedLines(entry, ctx);
@@ -78,13 +78,13 @@ export const journalEntrySchema = z
 // them — only date/description/reference/sector/lines are mutable.
 export const updateJournalEntrySchema = z
   .object({
-    date: z.coerce.date(),
-    description: z.string().min(1, "Description is required"),
+    date: z.coerce.date({ error: "Enter a valid date." }),
+    description: z.string({ error: "Enter a description." }).min(1, "Enter a description."),
     reference: z.string().optional(),
     sector: z.enum(CREDIT_VOUCHER_SECTOR_CODES).nullable().optional(),
     lines: z
       .array(journalLineSchema)
-      .min(2, "A journal entry needs at least two line items"),
+      .min(2, "Add at least two entries."),
   })
   .superRefine(validateBalancedLines);
 

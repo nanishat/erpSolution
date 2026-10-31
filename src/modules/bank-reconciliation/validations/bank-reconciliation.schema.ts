@@ -2,22 +2,22 @@ import { z } from "zod";
 
 const importBankStatementLineSchema = z.object({
   date: z.coerce.date(),
-  description: z.string().min(1, "Description is required"),
+  description: z.string({ error: "Enter a description." }).min(1, "Enter a description."),
   // Signed: positive = inflow/deposit, negative = outflow/withdrawal — see
   // BankStatementLine.amount in schema.prisma for the confirmed decision.
   // Zero is rejected here (mirrors the DB CHECK constraint) rather than left
   // for the DB to reject, same "validate twice" precedent as
   // recordPaymentSchema's amount.positive().
-  amount: z.coerce.number().refine((value) => value !== 0, "Amount must not be zero"),
+  amount: z.coerce.number({ error: "Enter an amount." }).refine((value) => value !== 0, "Enter an amount other than 0."),
   referenceNo: z.string().optional(),
 });
 
 export const importBankStatementSchema = z.object({
-  accountId: z.string().min(1, "Account is required"),
-  periodStart: z.coerce.date(),
-  periodEnd: z.coerce.date(),
-  openingBalance: z.coerce.number(),
-  closingBalance: z.coerce.number(),
+  accountId: z.string({ error: "Select an account." }).min(1, "Select an account."),
+  periodStart: z.coerce.date({ error: "Enter a valid period start date." }),
+  periodEnd: z.coerce.date({ error: "Enter a valid period end date." }),
+  openingBalance: z.coerce.number({ error: "Enter an opening balance." }),
+  closingBalance: z.coerce.number({ error: "Enter a closing balance." }),
   lines: z.array(importBankStatementLineSchema),
 
   // TODO: derive importedById from the authenticated session once auth is

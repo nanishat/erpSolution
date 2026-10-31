@@ -15,8 +15,8 @@ import { z } from "zod";
 // debitVoucherSchemaWithBankRequirement below, which layers that check on
 // top once createDebitVoucher has looked the account up.
 export const debitVoucherLineSchema = z.object({
-  expenseAccountId: z.string().min(1, "Account is required"),
-  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  expenseAccountId: z.string({ error: "Select an account." }).min(1, "Select an account."),
+  amount: z.coerce.number({ error: "Enter an amount." }).positive("Amount must be greater than 0."),
   description: z.string().optional(),
   bankName: z.string().trim().min(1).optional(),
   chequeNo: z.string().trim().min(1).optional(),
@@ -25,21 +25,21 @@ export const debitVoucherLineSchema = z.object({
 
 export const debitVoucherSchema = z
   .object({
-    date: z.coerce.date(),
-    description: z.string().min(1, "Description is required"),
-    branchId: z.string().min(1, "Branch is required"),
-    cashBankAccountId: z.string().min(1, "Cash/Bank account is required"),
+    date: z.coerce.date({ error: "Enter a valid date." }),
+    description: z.string({ error: "Enter a description." }).min(1, "Enter a description."),
+    branchId: z.string({ error: "Select a branch." }).min(1, "Select a branch."),
+    cashBankAccountId: z.string({ error: "Select a Cash or Bank account." }).min(1, "Select a Cash or Bank account."),
     lines: z
       .array(debitVoucherLineSchema)
-      .min(1, "At least one line is required")
-      .max(5, "At most 5 lines are allowed"),
+      .min(1, "Add at least one entry.")
+      .max(5, "Use no more than five entries."),
   })
   .superRefine((entry, ctx) => {
     const total = entry.lines.reduce((sum, line) => sum + line.amount, 0);
     if (!(total > 0)) {
       ctx.addIssue({
         code: "custom",
-        message: "Sum of line amounts must be greater than zero",
+        message: "Enter an amount greater than 0.",
         path: ["lines"],
       });
     }
@@ -65,21 +65,21 @@ export function debitVoucherSchemaWithBankRequirement(isBankAccount: boolean) {
       if (!line.bankName?.trim()) {
         ctx.addIssue({
           code: "custom",
-          message: "Bank Name is required for a Bank account",
+          message: "Enter the bank name.",
           path: ["lines", index, "bankName"],
         });
       }
       if (!line.chequeNo?.trim()) {
         ctx.addIssue({
           code: "custom",
-          message: "Cheque No is required for a Bank account",
+          message: "Enter the Cash/Cheque No.",
           path: ["lines", index, "chequeNo"],
         });
       }
       if (!line.chequeDate) {
         ctx.addIssue({
           code: "custom",
-          message: "Cheque Date is required for a Bank account",
+          message: "Enter the cheque date.",
           path: ["lines", index, "chequeDate"],
         });
       }

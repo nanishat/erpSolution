@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { AccountPicker } from "@/components/shared/AccountPicker";
 import { BalanceSummary, toPaisa } from "@/components/shared/BalanceSummary";
 import { Card } from "@/components/shared/Card";
+import { FieldError } from "@/components/shared/FieldError";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
 import type { BranchOption } from "@/modules/core/services/branch.service";
 import Link from "next/link";
+import { debitVoucherSchemaWithBankRequirement } from "@/modules/accounting/validations/debit-voucher.schema";
 
 const MAX_LINES = 5;
 
@@ -45,6 +48,7 @@ export function DebitVoucherForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, showIssues, clearEditedField } = useFieldErrors("Entry");
 
   const cashBankAccounts = accounts.filter((a) => a.subType === "CASH" || a.subType === "BANK");
 
@@ -123,28 +127,30 @@ export function DebitVoucherForm({
     setFormError(null);
 
     if (!cashBankAccountId) {
-      setFormError("Select a Cash/Bank account.");
+      showIssues([{ path: ["cashBankAccountId"], message: "Select a Cash or Bank account." }]);
       return;
     }
     if (!branchId) {
-      setFormError("Select a branch.");
+      showIssues([{ path: ["branchId"], message: "Select a branch." }]);
       return;
     }
     if (!description.trim()) {
-      setFormError("Description is required.");
+      showIssues([{ path: ["description"], message: "Enter a description." }]);
       return;
     }
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
       if (!line.expenseAccountId) {
-        setFormError("Select an account for every line.");
+        showIssues([{ path: ["lines", index, "expenseAccountId"], message: "Select an account." }]);
         return;
       }
       if (!(Number(line.amount) > 0)) {
-        setFormError("Every line amount must be greater than zero.");
+        showIssues([{ path: ["lines", index, "amount"], message: "Amount must be greater than 0." }]);
         return;
       }
       if (isBankAccount && (!line.bankName.trim() || !line.chequeNo.trim() || !line.chequeDate)) {
-        setFormError("Bank Name, Cheque No, and Cheque Date are required on every line for a Bank account.");
+        const field = !line.bankName.trim() ? "bankName" : !line.chequeNo.trim() ? "chequeNo" : "chequeDate";
+        const message = field === "bankName" ? "Enter the bank name." : field === "chequeNo" ? "Enter the Cash/Cheque No." : "Enter the cheque date.";
+        showIssues([{ path: ["lines", index, field], message }]);
         return;
       }
     }
@@ -168,6 +174,12 @@ export function DebitVoucherForm({
       })),
     };
 
+    const parsed = debitVoucherSchemaWithBankRequirement(isBankAccount).safeParse(payload);
+    if (!parsed.success) {
+      showIssues(parsed.error.issues);
+      return;
+    }
+
     startTransition(async () => {
       const res = await fetch("/api/debit-vouchers", {
         method: "POST",
@@ -190,7 +202,7 @@ export function DebitVoucherForm({
   return (
     <div className="space-y-6">
       <PageHeader title="New Debit Voucher" description="Record expenses or payments against a Cash or Bank account." />
-      <form onSubmit={onSubmit} className="space-y-6">
+      <form onSubmit={onSubmit} onChange={clearEditedField} className="space-y-6">
       {formError && (
         <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {formError}
@@ -204,11 +216,13 @@ export function DebitVoucherForm({
           </label>
           <input
             id="date"
+            name="date"
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
           />
+          <FieldError message={fieldErrors.date} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="branchId">
@@ -216,6 +230,7 @@ export function DebitVoucherForm({
           </label>
           <select
             id="branchId"
+            name="branchId"
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -229,6 +244,7 @@ export function DebitVoucherForm({
               </option>
             ))}
           </select>
+          <FieldError message={fieldErrors.branchId} />
         </div>
       </div>
 
@@ -241,11 +257,13 @@ export function DebitVoucherForm({
         ) : (
           <AccountPicker
             id="cashBankAccountId"
+            fieldPath="cashBankAccountId"
             options={cashBankAccounts}
             value={cashBankAccountId}
             onChange={selectCashBankAccount}
           />
         )}
+        <FieldError message={fieldErrors.cashBankAccountId} />
       </div>
       </Card>
 
@@ -283,16 +301,19 @@ export function DebitVoucherForm({
                 ) : (
                   <AccountPicker
                     id={`expenseAccount-${index}`}
+                    fieldPath={`lines.${index}.expenseAccountId`}
                     options={lineAccounts}
                     value={line.expenseAccountId}
                     onChange={(expenseAccountId) => updateLine(index, { expenseAccountId })}
                   />
                 )}
+                <FieldError message={fieldErrors[`lines.${index}.expenseAccountId`]} />
               </div>
               <div>
                 <label className="text-sm font-medium" htmlFor={`amount-${index}`}>Amount *</label>
                 <input
                   id={`amount-${index}`}
+                  name={`lines.${index}.amount`}
                   type="number"
                   inputMode="decimal"
                   step="0.01"
@@ -302,11 +323,13 @@ export function DebitVoucherForm({
                   className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums"
                   data-line-cell
                 />
+                <FieldError message={fieldErrors[`lines.${index}.amount`]} />
               </div>
               <div>
                 <label className="text-sm font-medium" htmlFor={`lineDescription-${index}`}>Description</label>
                 <input
                   id={`lineDescription-${index}`}
+                  name={`lines.${index}.description`}
                   type="text"
                   value={line.description}
                   onChange={(e) => updateLine(index, { description: e.target.value })}
@@ -322,34 +345,40 @@ export function DebitVoucherForm({
                   <label className="text-sm font-medium" htmlFor={`bankName-${index}`}>Drawn On (Bank Name) *</label>
                   <input
                     id={`bankName-${index}`}
+                    name={`lines.${index}.bankName`}
                     type="text"
                     value={line.bankName}
                     onChange={(e) => updateLine(index, { bankName: e.target.value })}
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                     data-line-cell
                   />
+                  <FieldError message={fieldErrors[`lines.${index}.bankName`]} />
                 </div>
                 <div>
                   <label className="text-sm font-medium" htmlFor={`chequeNo-${index}`}>Cash/Cheque No *</label>
                   <input
                     id={`chequeNo-${index}`}
+                    name={`lines.${index}.chequeNo`}
                     type="text"
                     value={line.chequeNo}
                     onChange={(e) => updateLine(index, { chequeNo: e.target.value })}
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                     data-line-cell
                   />
+                  <FieldError message={fieldErrors[`lines.${index}.chequeNo`]} />
                 </div>
                 <div>
                   <label className="text-sm font-medium" htmlFor={`chequeDate-${index}`}>Dated *</label>
                   <input
                     id={`chequeDate-${index}`}
+                    name={`lines.${index}.chequeDate`}
                     type="date"
                     value={line.chequeDate}
                     onChange={(e) => updateLine(index, { chequeDate: e.target.value })}
                     className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                     data-line-cell
                   />
+                  <FieldError message={fieldErrors[`lines.${index}.chequeDate`]} />
                 </div>
               </div>
             )}
@@ -364,11 +393,13 @@ export function DebitVoucherForm({
           <label className="text-sm font-medium" htmlFor="description">Voucher Description *</label>
           <input
             id="description"
+            name="description"
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
           />
+          <FieldError message={fieldErrors.description} />
         </div>
       </Card>
 

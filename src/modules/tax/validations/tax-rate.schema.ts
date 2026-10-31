@@ -8,24 +8,24 @@ const RATE_MAX = 15;
 
 const ratePercentField = z.coerce
   .number()
-  .min(RATE_MIN, "ratePercent cannot be negative")
-  .max(RATE_MAX, `ratePercent cannot exceed ${RATE_MAX}%`);
+  .min(RATE_MIN, "Tax rate must be between 0 and 15.")
+  .max(RATE_MAX, "Tax rate must be between 0 and 15.");
 
 export const createTaxRateSchema = z.object({
-  type: z.nativeEnum(TaxType),
-  category: z.string().min(1, "Category is required"),
-  name: z.string().min(1, "Name is required"),
+  type: z.nativeEnum(TaxType, { error: "Select a tax type." }),
+  category: z.string({ error: "Enter a category." }).min(1, "Enter a category."),
+  name: z.string({ error: "Enter a name." }).min(1, "Enter a name."),
   ratePercent: ratePercentField,
-  direction: z.nativeEnum(TaxDirection),
+  direction: z.nativeEnum(TaxDirection, { error: "Select a direction." }),
   computationType: z.nativeEnum(TaxComputationType).optional(),
-  effectiveFrom: z.coerce.date().optional(),
-  effectiveTo: z.coerce.date().nullable().optional(),
+  effectiveFrom: z.coerce.date({ error: "Enter a valid start date." }).optional(),
+  effectiveTo: z.coerce.date({ error: "Enter a valid end date." }).nullable().optional(),
 });
 
 export const updateTaxRateSchema = z.object({
   type: z.nativeEnum(TaxType).optional(),
-  category: z.string().min(1, "Category is required").optional(),
-  name: z.string().min(1, "Name is required").optional(),
+  category: z.string({ error: "Enter a category." }).min(1, "Enter a category.").optional(),
+  name: z.string({ error: "Enter a name." }).min(1, "Enter a name.").optional(),
   ratePercent: ratePercentField.optional(),
   direction: z.nativeEnum(TaxDirection).optional(),
   computationType: z.nativeEnum(TaxComputationType).optional(),

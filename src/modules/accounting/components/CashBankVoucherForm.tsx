@@ -7,8 +7,10 @@ import type { VoucherType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { AccountPicker } from "@/components/shared/AccountPicker";
 import { BalanceSummary, toPaisa } from "@/components/shared/BalanceSummary";
+import { FieldError } from "@/components/shared/FieldError";
 import { Card } from "@/components/shared/Card";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import {
   CREDIT_VOUCHER_SECTOR_CODES,
@@ -16,7 +18,7 @@ import {
   type CreditVoucherSector,
 } from "@/modules/accounting/constants/sector";
 import type { ChartOfAccountOption } from "@/modules/accounting/types/journal-entry.types";
-import type { JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
+import { journalEntrySchema, type JournalEntryInput } from "@/modules/accounting/validations/journal-entry.schema";
 import type { BranchOption } from "@/modules/core/services/branch.service";
 import Link from "next/link";
 
@@ -47,6 +49,7 @@ export function CashBankVoucherForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, showIssues, clearEditedField } = useFieldErrors("Entry");
 
   const cashBankAccounts = accounts.filter((a) => a.subType === "CASH" || a.subType === "BANK");
 
@@ -78,27 +81,27 @@ export function CashBankVoucherForm({
 
     const numericAmount = Number(amount);
     if (!cashBankAccountId) {
-      setFormError("Select a Cash/Bank account.");
+      showIssues([{ path: ["cashBankAccountId"], message: "Select a Cash or Bank account." }]);
       return;
     }
     if (!otherAccountId) {
-      setFormError(`Select ${otherAccountLabel.toLowerCase()}.`);
+      showIssues([{ path: ["otherAccountId"], message: `Select ${otherAccountLabel.toLowerCase()}.` }]);
       return;
     }
     if (cashBankAccountId === otherAccountId) {
-      setFormError("The two accounts must be different.");
+      showIssues([{ path: ["otherAccountId"], message: "Choose a different account." }]);
       return;
     }
     if (!branchId) {
-      setFormError("Select a branch.");
+      showIssues([{ path: ["branchId"], message: "Select a branch." }]);
       return;
     }
     if (!description.trim()) {
-      setFormError("Description is required.");
+      showIssues([{ path: ["description"], message: "Enter a description." }]);
       return;
     }
     if (!(numericAmount > 0)) {
-      setFormError("Amount must be greater than zero.");
+      showIssues([{ path: ["amount"], message: "Amount must be greater than 0." }]);
       return;
     }
 
@@ -123,6 +126,19 @@ export function CashBankVoucherForm({
       ...(voucherType === "CREDIT_VOUCHER" ? { sector: sector || null } : {}),
       lines: [cashBankLine, otherLine],
     };
+
+    const parsed = journalEntrySchema.safeParse(payload);
+    if (!parsed.success) {
+      showIssues(parsed.error.issues.map((issue) => {
+        if (issue.path[0] !== "lines" || typeof issue.path[1] !== "number") return issue;
+        const index = issue.path[1];
+        const field = issue.path[2] === "accountId"
+          ? index === 0 ? "cashBankAccountId" : "otherAccountId"
+          : issue.path[2] === "branchId" ? "branchId" : "amount";
+        return { ...issue, path: [field], message: `Entry ${index + 1}: ${issue.message}` };
+      }));
+      return;
+    }
 
     startTransition(async () => {
       const res = await fetch("/api/journal-entries", {
@@ -167,11 +183,13 @@ export function CashBankVoucherForm({
           </label>
           <input
             id="date"
+            name="date"
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
           />
+          <FieldError message={fieldErrors.date} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="branchId">
@@ -179,6 +197,7 @@ export function CashBankVoucherForm({
           </label>
           <select
             id="branchId"
+            name="branchId"
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -192,6 +211,7 @@ export function CashBankVoucherForm({
               </option>
             ))}
           </select>
+          <FieldError message={fieldErrors.branchId} />
         </div>
       </div>
 
@@ -200,6 +220,7 @@ export function CashBankVoucherForm({
           <label className="text-sm font-medium" htmlFor="sector">Sector</label>
           <select
             id="sector"
+            name="sector"
             value={sector}
             onChange={(event) =>
               setSector(CREDIT_VOUCHER_SECTOR_CODES.find((code) => code === event.target.value) ?? "")
@@ -211,6 +232,7 @@ export function CashBankVoucherForm({
               <option key={code} value={code}>{CREDIT_VOUCHER_SECTOR_LABELS[code]}</option>
             ))}
           </select>
+          <FieldError message={fieldErrors.sector} />
         </div>
       )}
       </Card>
@@ -226,11 +248,13 @@ export function CashBankVoucherForm({
           ) : (
             <AccountPicker
               id="cashBankAccountId"
+              fieldPath="cashBankAccountId"
               options={cashBankAccounts}
               value={cashBankAccountId}
               onChange={setCashBankAccountId}
             />
           )}
+          <FieldError message={fieldErrors.cashBankAccountId} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="otherAccountId">{otherAccountLabel} *</label>
@@ -241,11 +265,13 @@ export function CashBankVoucherForm({
           ) : (
             <AccountPicker
               id="otherAccountId"
+              fieldPath="otherAccountId"
               options={otherAccounts}
               value={otherAccountId}
               onChange={setOtherAccountId}
             />
           )}
+          <FieldError message={fieldErrors.otherAccountId} />
         </div>
       </div>
 
@@ -281,6 +307,7 @@ export function CashBankVoucherForm({
         </label>
         <input
           id="amount"
+          name="amount"
           type="number"
           inputMode="decimal"
           step="0.01"
@@ -289,6 +316,7 @@ export function CashBankVoucherForm({
           onChange={(e) => setAmount(e.target.value)}
           className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums sm:max-w-md"
         />
+        <FieldError message={fieldErrors.amount} />
       </div>
       <BalanceSummary debitPaisa={amountPaisa} creditPaisa={amountPaisa} />
       </Card>
@@ -298,11 +326,13 @@ export function CashBankVoucherForm({
           <label className="text-sm font-medium" htmlFor="description">Description *</label>
           <input
             id="description"
+            name="description"
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
           />
+          <FieldError message={fieldErrors.description} />
         </div>
       </Card>
 

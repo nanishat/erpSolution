@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 const paymentAllocationSchema = z.object({
-  invoiceId: z.string().min(1, "Invoice is required"),
-  amountApplied: z.coerce.number().positive("Amount applied must be greater than zero"),
+  invoiceId: z.string({ error: "Select an invoice." }).min(1, "Select an invoice."),
+  amountApplied: z.coerce.number({ error: "Enter an amount to apply." }).positive("Amount applied must be greater than 0."),
 });
 
 // Shared by recordPaymentSchema below — sum(allocations.amountApplied) must
@@ -19,14 +19,14 @@ function validateAllocationsWithinAmount(
   if (Math.round((totalAllocated - input.amount) * 100) > 0) {
     ctx.addIssue({
       code: "custom",
-      message: `Sum of allocations (${totalAllocated}) cannot exceed the payment amount (${input.amount})`,
+      message: "Allocated amounts cannot exceed the payment amount.",
       path: ["allocations"],
     });
   }
 }
 
 const baseRecordPaymentFields = {
-  partnerId: z.string().min(1, "Partner is required"),
+  partnerId: z.string({ error: "Select a partner." }).min(1, "Select a partner."),
 
   // Not in the original task's input shape, but required: JournalEntry.branchId
   // is NOT NULL and a Partner has no reliable non-null branch of its own
@@ -36,17 +36,17 @@ const baseRecordPaymentFields = {
   // fills this in from the invoice's own branchId automatically, so
   // RecordPaymentForm.tsx/POST /api/invoices/[id]/payments callers are
   // unaffected — only the new general POST /api/payments caller must supply it.
-  branchId: z.string().min(1, "Branch is required"),
+  branchId: z.string({ error: "Select a branch." }).min(1, "Select a branch."),
 
-  amount: z.coerce.number().positive("Amount must be greater than zero"),
-  date: z.coerce.date(),
+  amount: z.coerce.number({ error: "Enter an amount." }).positive("Amount must be greater than 0."),
+  date: z.coerce.date({ error: "Enter a valid date." }),
   method: z.string().optional(),
   reference: z.string().optional(),
 
   // Which Cash/Bank ChartOfAccount this payment moves through — same
   // account picker convention as CashBankVoucherForm (subType CASH/BANK),
   // required rather than hardcoded since branches may use different accounts.
-  cashBankAccountId: z.string().min(1, "Cash/Bank account is required"),
+  cashBankAccountId: z.string({ error: "Select a Cash or Bank account." }).min(1, "Select a Cash or Bank account."),
 
   allocations: z.array(paymentAllocationSchema).default([]),
 
@@ -70,9 +70,9 @@ export const recordPaymentForInvoiceSchema = z
   .omit({ partnerId: true, branchId: true, allocations: true });
 
 export const applyPartnerCreditSchema = z.object({
-  partnerCreditId: z.string().min(1, "Partner credit is required"),
-  invoiceId: z.string().min(1, "Invoice is required"),
-  amountToApply: z.coerce.number().positive("Amount to apply must be greater than zero"),
+  partnerCreditId: z.string().min(1, "Select a partner credit."),
+  invoiceId: z.string().min(1, "Select an invoice."),
+  amountToApply: z.coerce.number({ error: "Enter an amount to apply." }).positive("Amount to apply must be greater than 0."),
 });
 
 export type PaymentAllocationInput = z.infer<typeof paymentAllocationSchema>;
