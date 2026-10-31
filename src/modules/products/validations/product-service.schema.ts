@@ -1,18 +1,18 @@
 import { ProductServiceType } from "@prisma/client";
 import { z } from "zod";
 
-const unitPriceField = z.coerce.number().min(0, "unitPrice cannot be negative");
+const unitPriceField = z.coerce.number({ error: "Enter a unit price." }).min(0, "Unit price must be 0 or more.");
 
 export const createProductServiceSchema = z.object({
-  code: z.string().min(1, "Code is required"),
-  name: z.string().min(1, "Name is required"),
+  code: z.string({ error: "Enter a code." }).min(1, "Enter a code."),
+  name: z.string({ error: "Enter a name." }).min(1, "Enter a name."),
   description: z.string().optional(),
-  type: z.nativeEnum(ProductServiceType),
+  type: z.nativeEnum(ProductServiceType, { error: "Select a type." }),
 
   unitPrice: unitPriceField.optional(),
   unit: z.string().optional(),
 
-  incomeAccountId: z.string().min(1, "Income account is required"),
+  incomeAccountId: z.string({ error: "Select an income account." }).min(1, "Select an income account."),
   expenseAccountId: z.string().optional(),
 
   // TODO: derive createdById from the authenticated session once auth is wired up.
@@ -20,15 +20,15 @@ export const createProductServiceSchema = z.object({
 });
 
 export const updateProductServiceSchema = z.object({
-  code: z.string().min(1, "Code is required").optional(),
-  name: z.string().min(1, "Name is required").optional(),
+  code: z.string({ error: "Enter a code." }).min(1, "Enter a code.").optional(),
+  name: z.string({ error: "Enter a name." }).min(1, "Enter a name.").optional(),
   description: z.string().nullable().optional(),
-  type: z.nativeEnum(ProductServiceType).optional(),
+  type: z.nativeEnum(ProductServiceType, { error: "Select a type." }).optional(),
 
   unitPrice: unitPriceField.optional(),
   unit: z.string().nullable().optional(),
 
-  incomeAccountId: z.string().min(1, "Income account is required").optional(),
+  incomeAccountId: z.string({ error: "Select an income account." }).min(1, "Select an income account.").optional(),
   expenseAccountId: z.string().nullable().optional(),
 
   isActive: z.boolean().optional(),

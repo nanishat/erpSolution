@@ -139,7 +139,7 @@ export default async function ChartOfAccountsPage({
         {items.length === 0 ? (
           <EmptyState title="No accounts found" description="Try changing the filters." />
         ) : (
-          <table className="w-full min-w-[720px] border-collapse">
+          <table className="w-full min-w-180 border-collapse">
             <thead>
               <tr>
                 <Th>Code</Th>

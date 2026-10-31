@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { AccountPicker } from "@/components/shared/AccountPicker";
 import { BalanceSummary, toPaisa } from "@/components/shared/BalanceSummary";
 import { Card } from "@/components/shared/Card";
+import { FieldError } from "@/components/shared/FieldError";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import { useUnsavedChangesWarning } from "@/hooks/useUnsavedChangesWarning";
 import Link from "next/link";
 import { createJournalEntryAction } from "@/modules/accounting/actions/journal-entry.actions";
@@ -60,6 +62,7 @@ export function JournalEntryForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, showIssues, clearEditedField } = useFieldErrors("Entry");
 
   const {
     register,
@@ -151,6 +154,12 @@ export function JournalEntryForm({
 
   const onSubmit = (values: JournalEntryInput) => {
     setFormError(null);
+    const schema = mode === "create" ? journalEntrySchema : updateJournalEntrySchema;
+    const parsed = schema.safeParse(values);
+    if (!parsed.success) {
+      showIssues(parsed.error.issues);
+      return;
+    }
 
     if (mode === "edit") {
       startTransition(async () => {
@@ -191,7 +200,11 @@ export function JournalEntryForm({
         title={mode === "create" ? "New Journal Voucher" : "Edit Journal Voucher"}
         description="Record the date, branch, and balanced account entries for this voucher."
       />
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit, () => {
+        const schema = mode === "create" ? journalEntrySchema : updateJournalEntrySchema;
+        const parsed = schema.safeParse(getValues());
+        if (!parsed.success) showIssues(parsed.error.issues);
+      })} onChange={clearEditedField} className="space-y-6">
         {formError && (
           <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {formError}
@@ -209,9 +222,7 @@ export function JournalEntryForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("date", { valueAsDate: true })}
           />
-          {errors.date && (
-            <p className="mt-1 text-xs text-destructive">{errors.date.message}</p>
-          )}
+          <FieldError message={fieldErrors.date ?? errors.date?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="reference">
@@ -252,9 +263,7 @@ export function JournalEntryForm({
               Locked — the document number is stamped from this branch.
             </p>
           )}
-          {errors.branchId && (
-            <p className="mt-1 text-xs text-destructive">{errors.branchId.message}</p>
-          )}
+          <FieldError message={fieldErrors.branchId ?? errors.branchId?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="voucherType">
@@ -276,9 +285,7 @@ export function JournalEntryForm({
               </option>
             ))}
           </select>
-          {errors.voucherType && (
-            <p className="mt-1 text-xs text-destructive">{errors.voucherType.message}</p>
-          )}
+          <FieldError message={fieldErrors.voucherType ?? errors.voucherType?.message} />
         </div>
       </div>
 
@@ -312,9 +319,7 @@ export function JournalEntryForm({
               </option>
             ))}
           </select>
-          {errors.sector && (
-            <p className="mt-1 text-xs text-destructive">{errors.sector.message}</p>
-          )}
+          <FieldError message={fieldErrors.sector ?? errors.sector?.message} />
         </div>
       )}
         </Card>
@@ -348,12 +353,13 @@ export function JournalEntryForm({
               ) : (
                 <AccountPicker
                   id={`line-${index}-account`}
+                  fieldPath={`lines.${index}.accountId`}
                   options={accounts}
                   value={watchedLines[index]?.accountId ?? ""}
                   onChange={(accountId) => setValue(`lines.${index}.accountId`, accountId, { shouldDirty: true })}
                 />
               )}
-              {errors.lines?.[index]?.accountId && <p className="mt-1 text-xs text-destructive">{errors.lines[index].accountId.message}</p>}
+              <FieldError message={fieldErrors[`lines.${index}.accountId`] ?? errors.lines?.[index]?.accountId?.message} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor={`line-${index}-branch`}>Branch *</label>
@@ -366,6 +372,7 @@ export function JournalEntryForm({
                 <option value="" disabled>Select branch</option>
                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
+              <FieldError message={fieldErrors[`lines.${index}.branchId`] ?? errors.lines?.[index]?.branchId?.message} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor={`line-${index}-debit`}>Debit</label>
@@ -379,6 +386,7 @@ export function JournalEntryForm({
                 {...register(`lines.${index}.debit` as const, { valueAsNumber: true })}
                 data-line-cell
               />
+              <FieldError message={fieldErrors[`lines.${index}.debit`] ?? errors.lines?.[index]?.debit?.message} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor={`line-${index}-credit`}>Credit</label>
@@ -392,6 +400,7 @@ export function JournalEntryForm({
                 {...register(`lines.${index}.credit` as const, { valueAsNumber: true })}
                 data-line-cell
               />
+              <FieldError message={fieldErrors[`lines.${index}.credit`] ?? errors.lines?.[index]?.credit?.message} />
             </div>
             <div>
               <label className="text-sm font-medium" htmlFor={`line-${index}-memo`}>Memo</label>
@@ -418,9 +427,7 @@ export function JournalEntryForm({
           </div>
         ))}
 
-        {typeof errors.lines?.message === "string" && (
-          <p className="text-xs text-destructive">{errors.lines.message}</p>
-        )}
+        <FieldError message={fieldErrors.lines ?? (typeof errors.lines?.message === "string" ? errors.lines.message : undefined)} />
       </div>
       <BalanceSummary debitPaisa={debitPaisa} creditPaisa={creditPaisa} />
         </Card>
@@ -434,7 +441,7 @@ export function JournalEntryForm({
               className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
               {...register("description")}
             />
-            {errors.description && <p className="mt-1 text-xs text-destructive">{errors.description.message}</p>}
+            <FieldError message={fieldErrors.description ?? errors.description?.message} />
           </div>
         </Card>
 

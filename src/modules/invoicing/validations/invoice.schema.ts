@@ -1,35 +1,33 @@
 import { InvoiceDirection, InvoiceStatus } from "@prisma/client";
 import { z } from "zod";
+import { CREDIT_VOUCHER_SECTOR_CODES } from "@/modules/accounting/constants/sector";
 
-// Free text, same precedent as TaxRate.category — the full sector list isn't
-// known yet (including the confirmed "GS", "CC", "EQ", and "MS" sectors), so this is
-// intentionally not an enum. Loosely validated (trimmed, length-capped,
-// uppercased for consistency in generated invoice numbers) rather than
-// format-restricted. Only meaningful for direction: CUSTOMER — see below.
+// Only meaningful for direction: CUSTOMER — see below.
 const sectorField = z
   .string()
   .trim()
-  .min(1, "Sector is required")
-  .max(10, "Sector must be 10 characters or fewer")
-  .transform((value) => value.toUpperCase());
+  .min(1, "Select a sector.")
+  .max(10, "Select a sector.")
+  .transform((value) => value.toUpperCase())
+  .pipe(z.enum(CREDIT_VOUCHER_SECTOR_CODES, { error: "Select a sector." }));
 
 const invoiceLineSchema = z.object({
   // Optional at the type level, but createInvoice rejects any line that
   // resolves to no productServiceId — see InvoiceLineMissingIncomeAccountError
   // (direction: CUSTOMER) / InvoiceLineMissingExpenseAccountError (direction: VENDOR).
   productServiceId: z.string().optional(),
-  description: z.string().min(1, "Description is required"),
-  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
-  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative"),
+  description: z.string({ error: "Enter a description." }).min(1, "Enter a description."),
+  quantity: z.coerce.number({ error: "Enter a quantity." }).positive("Quantity must be greater than 0."),
+  unitPrice: z.coerce.number({ error: "Enter a unit price." }).min(0, "Unit price must be 0 or more."),
 });
 
 const baseInvoiceFields = {
-  partnerId: z.string().min(1, "Partner is required"),
-  branchId: z.string().min(1, "Branch is required"),
-  date: z.coerce.date(),
-  dueDate: z.coerce.date().optional(),
+  partnerId: z.string({ error: "Select a customer or vendor." }).min(1, "Select a customer or vendor."),
+  branchId: z.string({ error: "Select a branch." }).min(1, "Select a branch."),
+  date: z.coerce.date({ error: "Enter a valid date." }),
+  dueDate: z.coerce.date({ error: "Enter a valid due date." }).optional(),
   notes: z.string().optional(),
-  lines: z.array(invoiceLineSchema).min(1, "An invoice needs at least one line item"),
+  lines: z.array(invoiceLineSchema).min(1, "Add at least one line item."),
   // TODO: derive createdById from the authenticated session once auth is wired up.
   createdById: z.coerce.number().int().optional(),
 };

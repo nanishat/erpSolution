@@ -2,24 +2,24 @@ import { AccountSubType, AccountType } from "@prisma/client";
 import { z } from "zod";
 
 export const createChartOfAccountSchema = z.object({
-  code: z.string().min(1, "Code is required"),
-  name: z.string().min(1, "Name is required"),
+  code: z.string({ error: "Enter a code." }).min(1, "Enter a code."),
+  name: z.string({ error: "Enter a name." }).min(1, "Enter a name."),
   description: z.string().optional(),
-  type: z.nativeEnum(AccountType),
+  type: z.nativeEnum(AccountType, { error: "Select an account type." }),
   subType: z.nativeEnum(AccountSubType).optional(),
   parentId: z.string().optional(),
   isReconcilable: z.boolean().optional(),
   isPostable: z.boolean().optional(),
   currencyCode: z.string().optional(),
-  openingBalance: z.coerce.number().optional(),
-  openingBalanceDate: z.coerce.date().optional(),
+  openingBalance: z.coerce.number({ error: "Enter an opening balance." }).optional(),
+  openingBalanceDate: z.coerce.date({ error: "Enter a valid opening balance date." }).optional(),
   // TODO: derive createdById from the authenticated session once auth is wired up.
   createdById: z.coerce.number().int().optional(),
 });
 
 export const updateChartOfAccountSchema = z.object({
-  code: z.string().min(1, "Code is required").optional(),
-  name: z.string().min(1, "Name is required").optional(),
+  code: z.string({ error: "Enter a code." }).min(1, "Enter a code.").optional(),
+  name: z.string({ error: "Enter a name." }).min(1, "Enter a name.").optional(),
   description: z.string().nullable().optional(),
   type: z.nativeEnum(AccountType).optional(),
   subType: z.nativeEnum(AccountSubType).nullable().optional(),

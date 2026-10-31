@@ -13,6 +13,7 @@ export function AccountPicker({
   value,
   onChange,
   id,
+  fieldPath,
   placeholder = "Search accounts",
   disabled = false,
 }: {
@@ -20,6 +21,7 @@ export function AccountPicker({
   value: string;
   onChange: (accountId: string) => void;
   id?: string;
+  fieldPath?: string;
   placeholder?: string;
   disabled?: boolean;
 }) {
@@ -99,6 +101,7 @@ export function AccountPicker({
         }}
         onKeyDown={handleKeyDown}
         data-line-cell
+        data-field-path={fieldPath ?? id}
         className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:bg-muted disabled:text-muted-foreground"
       />
       {isOpen && (

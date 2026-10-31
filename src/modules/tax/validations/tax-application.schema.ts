@@ -8,13 +8,13 @@ const RATE_MAX = 15;
 
 const ratePercentField = z.coerce
   .number()
-  .min(RATE_MIN, "ratePercent cannot be negative")
-  .max(RATE_MAX, `ratePercent cannot exceed ${RATE_MAX}%`);
+  .min(RATE_MIN, "TDS/VDS rate must be between 0 and 15.")
+  .max(RATE_MAX, "TDS/VDS rate must be between 0 and 15.");
 
 const baseFields = {
-  journalEntryId: z.string().min(1, "Journal entry is required"),
+  journalEntryId: z.string({ error: "Select a journal entry." }).min(1, "Select a journal entry."),
   partnerId: z.string().optional(),
-  baseAmount: z.coerce.number().positive("baseAmount must be greater than 0"),
+  baseAmount: z.coerce.number({ error: "Enter a base amount." }).positive("Base amount must be greater than 0."),
   // TODO: derive createdById from the authenticated session once auth is wired up.
   createdById: z.coerce.number().int().optional(),
 };
@@ -26,8 +26,8 @@ const vatTaxApplicationSchema = z
   .object({
     ...baseFields,
     taxType: z.literal(TaxType.VAT),
-    direction: z.nativeEnum(TaxDirection),
-    sourceTaxRateId: z.string().min(1, "sourceTaxRateId is required for VAT"),
+    direction: z.nativeEnum(TaxDirection, { error: "Select a direction." }),
+    sourceTaxRateId: z.string({ error: "Select a VAT rate." }).min(1, "Select a VAT rate."),
   })
   .strict();
 

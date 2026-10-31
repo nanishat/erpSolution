@@ -11,34 +11,34 @@ function refineFutureExemptionDate<T extends { tdsExemptionExpiryDate?: Date | n
 }
 
 const futureExemptionDateIssue = {
-  message: "tdsExemptionExpiryDate must be a future date",
+  message: "Choose an exemption expiry date in the future.",
   path: ["tdsExemptionExpiryDate"],
 };
 
 export const createPartnerSchema = z
   .object({
-    type: z.nativeEnum(PartnerType),
-    name: z.string().min(1, "Name is required"),
+    type: z.nativeEnum(PartnerType, { error: "Select a partner type." }),
+    name: z.string({ error: "Enter a name." }).min(1, "Enter a name."),
     contactPerson: z.string().optional(),
     phone: z.string().optional(),
-    email: z.string().email().optional(),
+    email: z.string().email("Enter a valid email address.").optional(),
     address: z.string().optional(),
 
-    tin: z.string().min(1, "TIN is required"),
-    bin: z.string().min(1, "BIN is required"),
+    tin: z.string({ error: "Enter the TIN." }).min(1, "Enter the TIN."),
+    bin: z.string({ error: "Enter the BIN." }).min(1, "Enter the BIN."),
 
     bankName: z.string().optional(),
     bankAccountNumber: z.string().optional(),
     bankBranch: z.string().optional(),
     routingNumber: z.string().optional(),
 
-    creditTermsDays: z.coerce.number().int().optional(),
+    creditTermsDays: z.coerce.number({ error: "Enter the credit terms in days." }).int("Enter a whole number of days.").optional(),
 
     vatInclusiveInPrice: z.boolean().optional(),
 
     tdsExempt: z.boolean().optional(),
     tdsExemptionCertNumber: z.string().optional(),
-    tdsExemptionExpiryDate: z.coerce.date().optional(),
+    tdsExemptionExpiryDate: z.coerce.date({ error: "Enter a valid expiry date." }).optional(),
 
     localBranchId: z.string().optional(),
 
@@ -53,27 +53,27 @@ export const updatePartnerSchema = z
     // actively rejected by the service layer, rather than silently dropped.
     type: z.nativeEnum(PartnerType).optional(),
 
-    name: z.string().min(1, "Name is required").optional(),
+    name: z.string({ error: "Enter a name." }).min(1, "Enter a name.").optional(),
     contactPerson: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
-    email: z.string().email().nullable().optional(),
+    email: z.string().email("Enter a valid email address.").nullable().optional(),
     address: z.string().nullable().optional(),
 
-    tin: z.string().min(1, "TIN is required").optional(),
-    bin: z.string().min(1, "BIN is required").optional(),
+    tin: z.string({ error: "Enter the TIN." }).min(1, "Enter the TIN.").optional(),
+    bin: z.string({ error: "Enter the BIN." }).min(1, "Enter the BIN.").optional(),
 
     bankName: z.string().nullable().optional(),
     bankAccountNumber: z.string().nullable().optional(),
     bankBranch: z.string().nullable().optional(),
     routingNumber: z.string().nullable().optional(),
 
-    creditTermsDays: z.coerce.number().int().nullable().optional(),
+    creditTermsDays: z.coerce.number({ error: "Enter the credit terms in days." }).int("Enter a whole number of days.").nullable().optional(),
 
     vatInclusiveInPrice: z.boolean().nullable().optional(),
 
     tdsExempt: z.boolean().optional(),
     tdsExemptionCertNumber: z.string().nullable().optional(),
-    tdsExemptionExpiryDate: z.coerce.date().nullable().optional(),
+    tdsExemptionExpiryDate: z.coerce.date({ error: "Enter a valid expiry date." }).nullable().optional(),
 
     localBranchId: z.string().nullable().optional(),
 

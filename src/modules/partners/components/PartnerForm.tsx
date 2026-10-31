@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import type { PartnerType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/shared/FieldError";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import type { BranchOption } from "@/modules/core/services/branch.service";
 import type { Partner } from "@/modules/partners/services/partner.service";
 import {
@@ -57,12 +59,12 @@ export function PartnerForm({
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, showIssues, clearEditedField } = useFieldErrors();
 
   const {
     register,
     handleSubmit,
     watch,
-    setError,
     formState: { errors },
   } = useForm<PartnerFormValues>({
     defaultValues: {
@@ -134,13 +136,7 @@ export function PartnerForm({
     const parsed = schema.safeParse(payload);
 
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (typeof field === "string" && field in values) {
-          setError(field as keyof PartnerFormValues, { message: issue.message });
-        }
-      }
-      setFormError(parsed.error.issues[0]?.message ?? "Please fix the errors below.");
+      showIssues(parsed.error.issues);
       return;
     }
 
@@ -173,12 +169,13 @@ export function PartnerForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
+        onChange={clearEditedField}
       className="space-y-4 rounded-lg border border-border p-4"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="type">
-            Type
+            Type{mode === "create" ? " *" : ""}
           </label>
           <select
             id="type"
@@ -197,13 +194,11 @@ export function PartnerForm({
               Type can&apos;t be changed after creation.
             </p>
           )}
-          {errors.type && (
-            <p className="mt-1 text-xs text-destructive">{errors.type.message}</p>
-          )}
+          <FieldError message={fieldErrors.type ?? errors.type?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="name">
-            Name
+            Name{mode === "create" ? " *" : ""}
           </label>
           <input
             id="name"
@@ -211,9 +206,7 @@ export function PartnerForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("name")}
           />
-          {errors.name && (
-            <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>
-          )}
+          <FieldError message={fieldErrors.name ?? errors.name?.message} />
         </div>
       </div>
 
@@ -253,9 +246,7 @@ export function PartnerForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("email")}
           />
-          {errors.email && (
-            <p className="mt-1 text-xs text-destructive">{errors.email.message}</p>
-          )}
+          <FieldError message={fieldErrors.email ?? errors.email?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="address">
@@ -273,7 +264,7 @@ export function PartnerForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="tin">
-            TIN
+            TIN{mode === "create" ? " *" : ""}
           </label>
           <input
             id="tin"
@@ -281,13 +272,12 @@ export function PartnerForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("tin")}
           />
-          {errors.tin && (
-            <p className="mt-1 text-xs text-destructive">{errors.tin.message}</p>
-          )}
+          <FieldError message={fieldErrors.tin ?? errors.tin?.message} />
+          <p className="mt-1 text-xs text-muted-foreground">Used for tax identification and reporting.</p>
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="bin">
-            BIN
+            BIN{mode === "create" ? " *" : ""}
           </label>
           <input
             id="bin"
@@ -295,9 +285,8 @@ export function PartnerForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("bin")}
           />
-          {errors.bin && (
-            <p className="mt-1 text-xs text-destructive">{errors.bin.message}</p>
-          )}
+          <FieldError message={fieldErrors.bin ?? errors.bin?.message} />
+          <p className="mt-1 text-xs text-muted-foreground">Used to identify the business for tax reporting.</p>
         </div>
       </div>
 
@@ -362,9 +351,8 @@ export function PartnerForm({
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("creditTermsDays")}
           />
-          {errors.creditTermsDays && (
-            <p className="mt-1 text-xs text-destructive">{errors.creditTermsDays.message}</p>
-          )}
+          <FieldError message={fieldErrors.creditTermsDays ?? errors.creditTermsDays?.message} />
+          <p className="mt-1 text-xs text-muted-foreground">Number of days before payment is due.</p>
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="vatInclusiveInPrice">
@@ -379,6 +367,7 @@ export function PartnerForm({
             <option value="true">Yes — quoted price includes VAT</option>
             <option value="false">No — VAT added separately</option>
           </select>
+          <p className="mt-1 text-xs text-muted-foreground">Choose whether quoted prices already include VAT.</p>
         </div>
       </div>
 
@@ -398,9 +387,7 @@ export function PartnerForm({
             </option>
           ))}
         </select>
-        {errors.localBranchId && (
-          <p className="mt-1 text-xs text-destructive">{errors.localBranchId.message}</p>
-        )}
+        <FieldError message={fieldErrors.localBranchId ?? errors.localBranchId?.message} />
       </div>
 
       <div className="space-y-3 rounded-md border border-border p-3">
@@ -432,11 +419,7 @@ export function PartnerForm({
                 className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                 {...register("tdsExemptionExpiryDate")}
               />
-              {errors.tdsExemptionExpiryDate && (
-                <p className="mt-1 text-xs text-destructive">
-                  {errors.tdsExemptionExpiryDate.message}
-                </p>
-              )}
+              <FieldError message={fieldErrors.tdsExemptionExpiryDate ?? errors.tdsExemptionExpiryDate?.message} />
             </div>
           </div>
         )}
@@ -449,7 +432,7 @@ export function PartnerForm({
         </label>
       )}
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
+      {formError && <div role="alert" className="text-sm text-destructive">{formError}</div>}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={isPending}>

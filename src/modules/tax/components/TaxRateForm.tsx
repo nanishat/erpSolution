@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { TaxComputationType, TaxDirection, TaxType } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/shared/FieldError";
+import { useFieldErrors } from "@/components/shared/useFieldErrors";
 import { createTaxRateSchema } from "@/modules/tax/validations/tax-rate.schema";
 
 type TaxRateFormValues = {
@@ -23,11 +25,11 @@ export function TaxRateForm() {
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { fieldErrors, showIssues, clearEditedField } = useFieldErrors();
 
   const {
     register,
     handleSubmit,
-    setError,
     formState: { errors },
   } = useForm<TaxRateFormValues>({
     defaultValues: {
@@ -59,13 +61,7 @@ export function TaxRateForm() {
     const parsed = createTaxRateSchema.safeParse(payload);
 
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (typeof field === "string" && field in values) {
-          setError(field as keyof TaxRateFormValues, { message: issue.message });
-        }
-      }
-      setFormError(parsed.error.issues[0]?.message ?? "Please fix the errors below.");
+      showIssues(parsed.error.issues);
       return;
     }
 
@@ -95,12 +91,13 @@ export function TaxRateForm() {
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
+      onChange={clearEditedField}
       className="space-y-4 rounded-lg border border-border p-4"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="type">
-            Type
+            Type *
           </label>
           <select
             id="type"
@@ -116,11 +113,11 @@ export function TaxRateForm() {
               </option>
             ))}
           </select>
-          {errors.type && <p className="mt-1 text-xs text-destructive">{errors.type.message}</p>}
+          <FieldError message={fieldErrors.type ?? errors.type?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="direction">
-            Direction
+            Direction *
           </label>
           <select
             id="direction"
@@ -136,16 +133,14 @@ export function TaxRateForm() {
               </option>
             ))}
           </select>
-          {errors.direction && (
-            <p className="mt-1 text-xs text-destructive">{errors.direction.message}</p>
-          )}
+          <FieldError message={fieldErrors.direction ?? errors.direction?.message} />
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="category">
-            Category
+            Category *
           </label>
           <input
             id="category"
@@ -154,13 +149,11 @@ export function TaxRateForm() {
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("category")}
           />
-          {errors.category && (
-            <p className="mt-1 text-xs text-destructive">{errors.category.message}</p>
-          )}
+          <FieldError message={fieldErrors.category ?? errors.category?.message} />
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="name">
-            Name
+            Name *
           </label>
           <input
             id="name"
@@ -169,14 +162,14 @@ export function TaxRateForm() {
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("name")}
           />
-          {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>}
+          <FieldError message={fieldErrors.name ?? errors.name?.message} />
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="ratePercent">
-            Rate % (0–15, fractional allowed)
+            Rate % *
           </label>
           <input
             id="ratePercent"
@@ -187,9 +180,8 @@ export function TaxRateForm() {
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("ratePercent")}
           />
-          {errors.ratePercent && (
-            <p className="mt-1 text-xs text-destructive">{errors.ratePercent.message}</p>
-          )}
+          <FieldError message={fieldErrors.ratePercent ?? errors.ratePercent?.message} />
+          <p className="mt-1 text-xs text-muted-foreground">Enter a rate from 0 to 15; decimals are allowed.</p>
         </div>
         <div>
           <label className="text-sm font-medium" htmlFor="computationType">
@@ -221,6 +213,7 @@ export function TaxRateForm() {
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("effectiveFrom")}
           />
+          <FieldError message={fieldErrors.effectiveFrom ?? errors.effectiveFrom?.message} />
           <p className="mt-1 text-xs text-muted-foreground">Defaults to today if left blank.</p>
         </div>
         <div>
@@ -233,11 +226,12 @@ export function TaxRateForm() {
             className="mt-1 w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             {...register("effectiveTo")}
           />
+          <FieldError message={fieldErrors.effectiveTo ?? errors.effectiveTo?.message} />
           <p className="mt-1 text-xs text-muted-foreground">Leave blank for no end date.</p>
         </div>
       </div>
 
-      {formError && <p className="text-sm text-destructive">{formError}</p>}
+      {formError && <div role="alert" className="text-sm text-destructive">{formError}</div>}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={isPending}>
